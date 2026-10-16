@@ -497,16 +497,25 @@
     </div>
   </div>
 
-  <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+  <!-- ==================== JAVASCRIPT LOGIC (ĐÃ TÍCH HỢP SẴN CLOUD URL CỦA BẠN) ==================== -->
   <script>
+    // Đường link Google Apps Script cố định của bạn (Tự động nhận diện trên mọi Điện thoại & Laptop)
+    const DEFAULT_CLOUD_URL = "https://script.google.com/macros/s/AKfycbxCPnNqpUjp1wMaELhLZiGm0_gv9KHzbJZTi5fDH6xjZVqkkHvv-6rv9Pp6yNLEpmE1/exec";
+
     let state = {
       students: [],
       activeStudentId: null,
       filter: 'ALL',
       viewMode: 'GRID',
       selectedRowIndex: null,
-      gasWebhookUrl: localStorage.getItem('ielts_hub_gas_url') || ''
+      gasWebhookUrl: localStorage.getItem('ielts_hub_gas_url') || DEFAULT_CLOUD_URL
     };
+
+    // Luôn đảm bảo nếu máy mới chưa có URL thì dùng DEFAULT_CLOUD_URL
+    if (!state.gasWebhookUrl || !state.gasWebhookUrl.startsWith('https://script.google.com')) {
+      state.gasWebhookUrl = DEFAULT_CLOUD_URL;
+      localStorage.setItem('ielts_hub_gas_url', DEFAULT_CLOUD_URL);
+    }
 
     function populate24HourSelects() {
       const ids = ['panelStartHour24', 'newStudentTime24', 'editStudentTime24', 'schedTime24'];
@@ -543,9 +552,16 @@
       updateClockGMT7();
       setInterval(updateClockGMT7, 15000);
 
-      if (state.students.length === 0 && state.gasWebhookUrl) {
-        await syncStudentsFromCloud(false);
-      } else if (state.students.length > 0) {
+      // Bất kể máy mới hay máy cũ, luôn đồng bộ với Google Cloud ngay khi mở trang
+      if (state.gasWebhookUrl) {
+        const pulled = await syncStudentsFromCloud(false);
+        if (!pulled && state.students.length > 0) {
+          // Nếu trên Google Cloud chưa có gì mà máy hiện tại đang có học viên -> Đẩy lên Google Cloud ngay
+          await pushStudentsToCloud(false);
+        }
+      }
+
+      if (state.students.length > 0) {
         // Tự động làm mới dữ liệu từ tất cả các Sheet của mọi học viên để Trạm Điều Phối luôn chuẩn xác
         syncAllStudentsSheets(false);
       }
@@ -561,15 +577,37 @@
         if (showAlert) alert('Vui lòng dán Google Apps Script URL trước!');
         return;
       }
+      setSyncBadge('SYNCING');
       try {
         await fetch(state.gasWebhookUrl, {
-          method: 'POST', mode: 'no-cors',
+          method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'saveStudents', students: state.students })
+          body: JSON.stringify({
+            action: 'saveStudents',
+            students: state.students,
+            activeStudentId: state.activeStudentId
+          })
         });
+        setSyncBadge('SAVED');
         if (showAlert) alert('✅ Đã lưu toàn bộ danh sách học sinh lên Google Drive!');
       } catch (e) {
-        if (showAlert) alert('❌ Lỗi khi lưu lên Google Drive.');
+        // Fallback no-cors nếu trình duyệt chặn đọc response
+        try {
+          await fetch(state.gasWebhookUrl, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'saveStudents',
+              students: state.students,
+              activeStudentId: state.activeStudentId
+            })
+          });
+          setSyncBadge('SAVED');
+          if (showAlert) alert('✅ Đã lưu toàn bộ danh sách học sinh lên Google Drive!');
+        } catch (err) {
+          setSyncBadge('ERROR');
+          if (showAlert) alert('❌ Lỗi khi lưu lên Google Drive.');
+        }
       }
     }
 
@@ -579,25 +617,34 @@
           alert('⚠️ Hãy dán Google Apps Script Web App URL vào mục Cài đặt (⚙️) để tải dữ liệu!');
           openSettingsModal();
         }
-        return;
+        return false;
       }
       setSyncBadge('SYNCING');
       try {
         const res = await fetch(`${state.gasWebhookUrl}?action=getStudents&t=${Date.now()}`);
-        const cloudStudents = await res.json();
-        if (Array.isArray(cloudStudents) && cloudStudents.length > 0) {
+        const data = await res.json();
+        // Tương thích cả 2 kiểu trả về: mảng trực tiếp [...] hoặc object { students: [...] }
+        const cloudStudents = Array.isArray(data) ? data : (data && Array.isArray(data.students) ? data.students : []);
+        if (cloudStudents.length > 0) {
+          const prevActive = state.activeStudentId;
           state.students = cloudStudents;
-          state.activeStudentId = state.students[0]?.id || null;
+          state.activeStudentId = state.students.some(s => s.id === prevActive)
+            ? prevActive
+            : (data.activeStudentId || state.students[0]?.id || null);
           localStorage.setItem('ielts_hub_students_v2', JSON.stringify(state.students));
           renderAll();
           setSyncBadge('SAVED');
           if (showAlert) alert(`✅ Đã tải thành công ${cloudStudents.length} học viên từ Google Drive!`);
-        } else if (showAlert) {
-          alert('ℹ️ Trên Google Drive chưa có dữ liệu học viên nào được lưu.');
+          return true;
+        } else {
+          setSyncBadge('SAVED');
+          if (showAlert) alert('ℹ️ Trên Google Drive chưa có dữ liệu học viên nào được lưu.');
+          return false;
         }
       } catch (e) {
         setSyncBadge('ERROR');
-        if (showAlert) alert('⚠️ Chưa tải được từ Google Drive.');
+        if (showAlert) alert('⚠️ Chưa tải được từ Google Drive. Hãy kiểm tra xem Apps Script đã Deploy ở chế độ Anyone (Bất kỳ ai) chưa.');
+        return false;
       }
     }
 
@@ -620,10 +667,8 @@
     function extractDayMonthFromText(text) {
       if (!text) return null;
       const str = String(text);
-      // Ưu tiên 1: Tìm ngày tháng nằm trong ngoặc đơn, ví dụ: Buổi 11 (18/10) hoặc (05/01/2027)
       let m = str.match(/\(\s*(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})(?:\s*[\/\-\.]\s*(\d{2,4}))?\s*\)/);
       if (!m) {
-        // Ưu tiên 2: Tìm chuỗi DD/MM bất kỳ trong ô Buổi
         m = str.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})(?:\s*[\/\-]\s*(\d{2,4}))?/);
       }
       if (!m) return null;
@@ -642,11 +687,9 @@
       let prevMonth = null;
       const resultMap = {};
 
-      // Sắp xếp danh sách buổi theo đúng thứ tự dòng từ trên xuống dưới trên Sheet
       const sortedLessons = [...(student.lessons || [])].sort((a, b) => (Number(a.rowIndex) || 0) - (Number(b.rowIndex) || 0));
 
       sortedLessons.forEach(lesson => {
-        // Lấy giờ dạy riêng của buổi (nếu có) hoặc giờ cố định của lớp
         let timePart = defaultTimeStr;
         if (lesson.startTime && lesson.startTime.includes('T')) {
           const tSplit = lesson.startTime.split('T')[1];
@@ -655,13 +698,11 @@
           }
         }
 
-        // 1. Ưu tiên đọc ngày tháng từ chữ trong Cột A: "Buổi X (DD/MM)" trên Google Sheet
         const dm = extractDayMonthFromText(lesson.buoi);
         if (dm) {
           if (dm.yyyy) {
             runningYear = dm.yyyy;
           } else if (prevMonth !== null) {
-            // Nếu buổi trước đang ở cuối năm (tháng 9, 10, 11, 12) mà buổi sau nhảy sang đầu năm (tháng 1, 2, 3, 4) -> Tăng năm lên +1
             if (prevMonth >= 9 && dm.mm <= 4) {
               runningYear += 1;
             }
@@ -681,7 +722,6 @@
           }
         }
 
-        // 2. Nếu trong cột A không ghi (DD/MM), kiểm tra ngày chọn trong startTime
         if (lesson.startTime && lesson.startTime.includes('T')) {
           const ts = new Date(lesson.startTime).getTime();
           if (!isNaN(ts)) {
@@ -699,7 +739,6 @@
           }
         }
 
-        // 3. Nếu buổi học hoàn toàn chưa có ngày tháng -> Đẩy xuống cuối cùng
         resultMap[lesson.rowIndex] = {
           ts: 9999999999999 + (Number(lesson.rowIndex) || 0),
           dateLabel: 'Chưa xếp ngày',
@@ -716,14 +755,12 @@
       const container = document.getElementById('prepReminderList');
       let allUpcoming = [];
 
-      // Mốc 00:00 đầu ngày hôm nay theo giờ Việt Nam
       const now = new Date();
       const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime();
 
       state.students.forEach(stu => {
         const timeMap = computeStudentLessonTimestamps(stu);
         (stu.lessons || []).forEach(l => {
-          // Chỉ lấy các buổi CHƯA DẠY (tienDo === false)
           if (!l.tienDo) {
             const info = timeMap[l.rowIndex] || {
               ts: 9999999999999,
@@ -748,10 +785,6 @@
         return;
       }
 
-      // Sắp xếp chuẩn xác theo thời gian thực:
-      // 1. Các buổi có ngày từ hôm nay trở đi được xếp từ gần nhất -> xa nhất
-      // 2. Các buổi quá hạn (nhưng chưa tick) xếp ngay liền kề theo thứ tự ngày
-      // 3. Các buổi chưa ghi ngày xếp cuối cùng
       allUpcoming.sort((a, b) => {
         const aHasDate = a.sortTs < 9999999999999;
         const bHasDate = b.sortTs < 9999999999999;
@@ -767,7 +800,6 @@
         return a.sortTs - b.sortTs;
       });
 
-      // CHỈ LẤY ĐÚNG 4 BUỔI GẦN NHẤT CỦA TẤT CẢ HỌC VIÊN
       const top4Nearest = allUpcoming.slice(0, 4);
 
       container.innerHTML = top4Nearest.map((item, idx) => {
@@ -1208,7 +1240,6 @@
       }
     }
 
-    // Đồng bộ toàn bộ các Sheet của tất cả học viên cùng lúc
     async function syncAllStudentsSheets(showAlert = false) {
       if (state.students.length === 0) return;
       setSyncBadge('SYNCING');
@@ -1596,7 +1627,7 @@
     function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
     function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
     async function saveGasSettings() {
-      state.gasWebhookUrl = document.getElementById('gasWebhookUrl').value.trim();
+      state.gasWebhookUrl = document.getElementById('gasWebhookUrl').value.trim() || DEFAULT_CLOUD_URL;
       localStorage.setItem('ielts_hub_gas_url', state.gasWebhookUrl);
       closeSettingsModal();
       if (state.students.length > 0) {
@@ -1606,65 +1637,8 @@
       }
     }
     function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
     window.onload = initApp;
-    window.onload = initApp; // <-- Dòng 1609 hiện tại của bạn
-
-    // ========= DÁN ĐOẠN NÀY VÀO NGAY DƯỚI DÒNG 1609 =========
-    const DEFAULT_CLOUD_URL = "https://script.google.com/macros/s/AKfycbxCPnNqpUjp1wMaELhLZiGm0_gv9KHzbJZTi5fDH6xjZVqkkHvv-6rv9Pp6yNLEpmE1/exec";
-
-    // Tự động gắn sẵn link Google Cloud cho mọi thiết bị (Điện thoại / Laptop khác)
-    if (DEFAULT_CLOUD_URL && DEFAULT_CLOUD_URL.startsWith("https://script.google.com")) {
-      localStorage.setItem('ielts_hub_gas_url', DEFAULT_CLOUD_URL);
-      if (typeof state !== 'undefined') state.gasWebhookUrl = DEFAULT_CLOUD_URL;
-    }
-
-    // Tự động bắn dữ liệu lên Google Cloud mỗi khi hàm saveToLocal() được gọi
-    if (typeof saveToLocal === 'function') {
-      const _origSaveToLocal = saveToLocal;
-      saveToLocal = function(...args) {
-        _origSaveToLocal.apply(this, args);
-        const url = (typeof state !== 'undefined' && state.gasWebhookUrl) || localStorage.getItem('ielts_hub_gas_url');
-        if (!url || !url.startsWith("https://script.google.com")) return;
-
-        setSyncBadge('SYNCING');
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'SAVE_CLOUD',
-            students: state.students,
-            activeStudentId: state.activeStudentId
-          })
-        })
-        .then(() => setSyncBadge('DONE'))
-        .catch(err => console.error('Cloud sync error:', err));
-      };
-    }
-
-    // Tự động tải danh sách học viên từ Google về ngay khi mở web trên Điện thoại / Laptop khác
-    window.addEventListener('load', async () => {
-      const url = (typeof state !== 'undefined' && state.gasWebhookUrl) || localStorage.getItem('ielts_hub_gas_url');
-      if (!url || !url.startsWith("https://script.google.com")) return;
-
-      try {
-        setSyncBadge('SYNCING');
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data && Array.isArray(data.students) && data.students.length > 0) {
-          state.students = data.students;
-          state.activeStudentId = data.activeStudentId || data.students[0].id;
-          localStorage.setItem('ielts_hub_students', JSON.stringify(state.students));
-          renderAll();
-        } else if (state.students && state.students.length > 0) {
-          // Lần đầu tiên: nếu trên Cloud chưa có gì thì đẩy dữ liệu từ máy chính lên Cloud
-          saveToLocal();
-        }
-        setSyncBadge('DONE');
-      } catch (e) {
-        console.error('Load cloud error:', e);
-      }
-    });
-    // ========= KẾT THÚC ĐOẠN DÁN THÊM =========
   </script>
 </body>
 </html>
