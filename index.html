@@ -243,7 +243,7 @@
               </label>
               <div class="flex items-center gap-2.5">
                 <a id="panelQuickDocsLink" href="#" target="_blank" class="text-[11px] text-blue-600 hover:underline font-semibold">Mở Lý thuyết ↗</a>
-                
+                <a id="panelQuickHwDocsLink" href="#" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>
               </div>
             </div>
             <textarea id="panelScript" oninput="saveFromSplitPanel()" rows="4" placeholder="- 5p đầu: Kiểm tra từ vựng Quizlet&#10;- Mở file Docs BTVN chữa bài Writing..." class="w-full text-xs border border-slate-300 rounded-xl p-3 leading-relaxed resize-y"></textarea>
@@ -735,6 +735,7 @@
               <div class="text-xs text-slate-700 whitespace-pre-line mb-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
                 <div class="flex items-center justify-between mb-1">
                   <b class="text-purple-900">📌 Bài tập về nhà:</b>
+                  ${hasHwLink ? `<a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>` : ''}
                 </div>
                 ${escapeHtml(l.btvn || 'Chưa giao BTVN')}
               </div>
@@ -801,7 +802,7 @@
             <!-- Cột D: BTVN -->
             <td class="p-3 align-top text-xs border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'btvn', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.btvn)}</div>
-              
+              ${hasHwLink ? `<div class="mt-1.5 pt-1 border-t border-slate-100 text-right"><a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a></div>` : ''}
             </td>
 
             <!-- Cột E: Tiến độ -->
