@@ -22,12 +22,31 @@
     }
     .col-resizer:hover { background-color: #60a5fa; }
 
-    /* Thanh kéo dãn giữa các khu vực (Sidebar - Main - SplitPanel) */
-    . gutter-resizer {
-      width: 6px; cursor: col-resize; background-color: transparent;
-      transition: background-color 0.15s; z-index: 30; flex-shrink: 0;
+    /* Thanh kéo dãn giữa cột trái (Học viên + Trạm điều phối) và bảng Sheet */
+    .gutter-resizer {
+      width: 8px;
+      cursor: col-resize;
+      background-color: #cbd5e1;
+      transition: background-color 0.15s;
+      z-index: 30;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    .gutter-resizer:hover, .gutter-resizer.active { background-color: #3b82f6; }
+    .gutter-resizer::after {
+      content: "⋮";
+      color: #475569;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1;
+    }
+    .gutter-resizer:hover, .gutter-resizer.active {
+      background-color: #3b82f6;
+    }
+    .gutter-resizer:hover::after, .gutter-resizer.active::after {
+      color: #ffffff;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 h-screen flex overflow-hidden select-none md:select-auto">
@@ -36,7 +55,7 @@
   <div id="mobileOverlay" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-slate-900/60 z-30 hidden md:hidden"></div>
 
   <!-- ==================== SIDEBAR TRÁI: QUẢN LÝ LỚP & TRẠM ĐIỀU PHỐI ==================== -->
-  <aside id="leftSidebar" style="width: 320px;" class="fixed md:static inset-y-0 left-0 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-2xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-200 min-w-[240px] max-w-[520px]">
+  <aside id="leftSidebar" style="width: 310px;" class="fixed md:static inset-y-0 left-0 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-2xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-200 min-w-[220px] max-w-[600px]">
     <!-- Logo & Cài đặt -->
     <div class="p-4 border-b border-slate-800 flex items-center justify-between">
       <div class="flex items-center space-x-2.5">
@@ -52,7 +71,7 @@
         <button onclick="syncStudentsFromCloud(true)" class="text-emerald-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Tải danh sách học viên từ Google Drive về máy này">
           <i class="fa-solid fa-cloud-arrow-down"></i>
         </button>
-        <button onclick="openSettingsModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Cấu hình Google Apps Script (Đồng bộ tài khoản Google)">
+        <button onclick="openSettingsModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Cấu hình Google Apps Script">
           <i class="fa-solid fa-gear"></i>
         </button>
         <button onclick="toggleMobileSidebar(false)" class="md:hidden text-slate-400 hover:text-white p-1.5">
@@ -62,7 +81,7 @@
     </div>
 
     <!-- Danh sách Học viên / Lớp học -->
-    <div id="sidebarStudentsBox" style="height: 45%;" class="p-4 border-b border-slate-800 overflow-y-auto custom-scroll flex flex-col min-h-[140px]">
+    <div id="sidebarStudentsBox" style="height: 44%;" class="p-4 border-b border-slate-800 overflow-y-auto custom-scroll flex flex-col min-h-[120px]">
       <div class="flex items-center justify-between mb-3 shrink-0">
         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Danh sách Học viên</span>
         <button onclick="openAddStudentModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded-md font-medium flex items-center gap-1 transition">
@@ -73,9 +92,11 @@
     </div>
 
     <!-- Thanh kéo dãn chiều cao giữa Danh sách học viên và Trạm điều phối -->
-    <div id="sidebarVerticalResizer" class="h-1.5 bg-slate-800 hover:bg-blue-500 cursor-row-resize shrink-0 transition" title="Kéo lên/xuống để chỉnh độ cao"></div>
+    <div id="sidebarVerticalResizer" class="h-2 bg-slate-800 hover:bg-blue-500 cursor-row-resize shrink-0 transition flex items-center justify-center" title="Kéo lên/xuống để chỉnh độ cao">
+      <div class="w-8 h-0.5 bg-slate-500 rounded"></div>
+    </div>
 
-    <!-- TRẠM ĐIỀU PHỐI & NHẮC CHUẨN BỊ GIÁO ÁN (XẾP CHUNG TẤT CẢ HỌC VIÊN THEO NGÀY GẦN NHẤT) -->
+    <!-- TRẠM ĐIỀU PHỐI & NHẮC CHUẨN BỊ GIÁO ÁN -->
     <div class="p-4 bg-slate-950/90 flex-1 flex flex-col overflow-hidden">
       <div class="flex items-center justify-between mb-1.5 shrink-0">
         <div class="flex items-center gap-1.5">
@@ -83,17 +104,17 @@
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
           </span>
-          <h2 class="text-xs font-bold uppercase tracking-wider text-amber-400">Trạm Điều Phối Chung</h2>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-amber-400">Trạm Điều Phối (4 Ca Gần Nhất)</h2>
         </div>
         <span id="clockGMT7" class="text-[11px] text-emerald-400 font-mono font-semibold"></span>
       </div>
-      <p class="text-[11px] text-slate-400 mb-2 shrink-0">Tất cả học viên • Xếp từ ngày gần nhất:</p>
+      <p class="text-[11px] text-slate-400 mb-2 shrink-0">Sắp xếp theo thứ tự Buổi (1, 2, 3...):</p>
       <div id="prepReminderList" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-1"></div>
     </div>
   </aside>
 
-  <!-- Thanh kéo dãn độ rộng Sidebar Trái (Desktop) -->
-  <div id="leftGutter" class="gutter-resizer hidden md:block" title="Kéo trái/phải để chỉnh độ rộng cột học viên"></div>
+  <!-- THANH KÉO GIỮA BẢNG TRÁI VÀ BẢNG SHEET BÊN PHẢI -->
+  <div id="leftGutter" class="gutter-resizer hidden md:flex" title="Giữ chuột và kéo sang trái/phải để chỉnh kích thước"></div>
 
   <!-- ==================== KHU VỰC TRUNG TÂM: WORKSPACE ==================== -->
   <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
@@ -185,8 +206,8 @@
       <!-- Danh sách Buổi học (Bảng hoặc Thẻ) -->
       <div id="mainContentArea" class="flex-1 overflow-y-auto custom-scroll p-3 md:p-6 min-w-0"></div>
 
-      <!-- Thanh kéo dãn độ rộng Split-View Panel (Desktop) -->
-      <div id="rightGutter" class="gutter-resizer hidden" title="Kéo trái/phải để phóng to/thu nhỏ khung Soạn bài"></div>
+      <!-- Thanh kéo dãn độ rộng Split-View Panel -->
+      <div id="rightGutter" class="gutter-resizer hidden" title="Giữ chuột và kéo trái/phải để chỉnh độ rộng khung Soạn bài"></div>
 
       <!-- KHUNG SOẠN THẢO KỊCH BẢN & CHECKLIST (SPLIT-VIEW PANEL BÊN PHẢI) -->
       <div id="splitViewPanel" style="width: 460px;" class="fixed md:static inset-0 md:inset-auto bg-white border-l border-slate-200 h-full flex flex-col shadow-2xl shrink-0 z-40 hidden min-w-[300px] max-w-[850px]">
@@ -201,7 +222,6 @@
         </div>
 
         <div class="p-4 overflow-y-auto custom-scroll flex-1 space-y-4">
-          <!-- Hẹn giờ dạy theo chuẩn 24h (Không dùng SA/CH) -->
           <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
@@ -235,7 +255,6 @@
             </div>
           </div>
 
-          <!-- Kịch bản giảng dạy & Checklist -->
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -246,10 +265,9 @@
                 <a id="panelQuickHwDocsLink" href="#" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>
               </div>
             </div>
-            <textarea id="panelScript" oninput="saveFromSplitPanel()" rows="4" placeholder="- 5p đầu: Kiểm tra từ vựng Quizlet&#10;- Mở file Docs BTVN chữa bài Writing..." class="w-full text-xs border border-slate-300 rounded-xl p-3 leading-relaxed resize-y"></textarea>
+            <textarea id="panelScript" oninput="saveFromSplitPanel()" rows="4" placeholder="- 5p đầu: Kiểm tra từ vựng Quizlet..." class="w-full text-xs border border-slate-300 rounded-xl p-3 leading-relaxed resize-y"></textarea>
           </div>
 
-          <!-- Đồng bộ Google Sheets -->
           <div class="border-t border-slate-200 pt-3 space-y-3">
             <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
               <i class="fa-solid fa-table"></i> Dữ liệu đồng bộ Google Sheets
@@ -274,7 +292,6 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="text-[11px] font-semibold text-slate-600">Cột D: Bài tập về nhà (BTVN)</label>
-                <a id="panelBtvnOpenLink" href="#" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở file BTVN ↗</a>
               </div>
               <textarea id="panelBtvn" oninput="saveFromSplitPanel()" rows="3" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed resize-y"></textarea>
             </div>
@@ -455,7 +472,7 @@
       </div>
       <div class="p-6 space-y-4 text-xs">
         <div>
-          <label class="block font-bold text-slate-700 mb-1">Google Apps Script Web App URL (Dán 1 lần để đồng bộ Máy tính & Điện thoại)</label>
+          <label class="block font-bold text-slate-700 mb-1">Google Apps Script Web App URL</label>
           <input type="text" id="gasWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs">
         </div>
         <div class="flex flex-wrap gap-2 pt-1">
@@ -474,7 +491,7 @@
     </div>
   </div>
 
-  <!-- ==================== JAVASCRIPT LOGIC TOÀN HỆ THỐNG ==================== -->
+  <!-- ==================== JAVASCRIPT LOGIC ==================== -->
   <script>
     let state = {
       students: [],
@@ -485,7 +502,6 @@
       gasWebhookUrl: localStorage.getItem('ielts_hub_gas_url') || ''
     };
 
-    // Khởi tạo danh sách chọn giờ chuẩn 24h (00:00 -> 23:45) không bao giờ hiện SA/CH
     function populate24HourSelects() {
       const ids = ['panelStartHour24', 'newStudentTime24', 'editStudentTime24', 'schedTime24'];
       let optionsHtml = '';
@@ -521,7 +537,6 @@
       updateClockGMT7();
       setInterval(updateClockGMT7, 15000);
 
-      // Nếu máy này (VD: điện thoại mới mở) đang trống mà đã có link Google Apps Script -> Tự tải danh sách học viên từ Google Drive về
       if (state.students.length === 0 && state.gasWebhookUrl) {
         await syncStudentsFromCloud(false);
       }
@@ -529,11 +544,9 @@
 
     function saveToLocal() {
       localStorage.setItem('ielts_hub_students_v2', JSON.stringify(state.students));
-      // Tự động lưu ngầm danh sách học sinh lên Google Drive
       pushStudentsToCloud(false);
     }
 
-    // ==================== ĐỒNG BỘ DANH SÁCH HỌC VIÊN QUA GOOGLE DRIVE ====================
     async function pushStudentsToCloud(showAlert = false) {
       if (!state.gasWebhookUrl) {
         if (showAlert) alert('Vui lòng dán Google Apps Script URL trước!');
@@ -545,7 +558,7 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'saveStudents', students: state.students })
         });
-        if (showAlert) alert('✅ Đã lưu toàn bộ danh sách học sinh lên Google Drive! Bạn có thể mở trên điện thoại và bấm tải về.');
+        if (showAlert) alert('✅ Đã lưu toàn bộ danh sách học sinh lên Google Drive!');
       } catch (e) {
         if (showAlert) alert('❌ Lỗi khi lưu lên Google Drive.');
       }
@@ -554,7 +567,7 @@
     async function syncStudentsFromCloud(showAlert = false) {
       if (!state.gasWebhookUrl) {
         if (showAlert) {
-          alert('⚠️ Hãy dán Google Apps Script Web App URL vào mục Cài đặt (⚙️) để tải dữ liệu từ tài khoản Google của bạn!');
+          alert('⚠️ Hãy dán Google Apps Script Web App URL vào mục Cài đặt (⚙️) để tải dữ liệu!');
           openSettingsModal();
         }
         return;
@@ -569,13 +582,13 @@
           localStorage.setItem('ielts_hub_students_v2', JSON.stringify(state.students));
           renderAll();
           setSyncBadge('SAVED');
-          if (showAlert) alert(`✅ Đã tải thành công ${cloudStudents.length} học viên từ tài khoản Google Drive của bạn!`);
+          if (showAlert) alert(`✅ Đã tải thành công ${cloudStudents.length} học viên từ Google Drive!`);
         } else if (showAlert) {
-          alert('ℹ️ Trên Google Drive chưa có dữ liệu học viên nào được lưu. Hãy bấm nút "Lưu danh sách học sinh lên Google Drive" trên máy tính trước nhé!');
+          alert('ℹ️ Trên Google Drive chưa có dữ liệu học viên nào được lưu.');
         }
       } catch (e) {
         setSyncBadge('ERROR');
-        if (showAlert) alert('⚠️ Chưa tải được từ Google Drive. Hãy đảm bảo bạn đã cập nhật mã Apps Script mới nhất!');
+        if (showAlert) alert('⚠️ Chưa tải được từ Google Drive.');
       }
     }
 
@@ -583,7 +596,6 @@
       return state.students.find(s => s.id === state.activeStudentId);
     }
 
-    // Đồng hồ 24h chuẩn GMT+7 (Tuyệt đối không có SA/CH)
     function updateClockGMT7() {
       const now = new Date();
       const fmt = new Intl.DateTimeFormat('en-GB', {
@@ -592,77 +604,38 @@
         hour12: false
       }).format(now);
       document.getElementById('clockGMT7').innerText = `GMT+7 • ${fmt}`;
-      renderPrepReminders();
     }
 
-    // ==================== BÓC TÁCH NGÀY THÁNG TỪ CHỮ "Buổi X (DD/MM)" ĐỂ SẮP XẾP TRẠM ĐIỀU PHỐI ====================
-    function getLessonTimestampForSort(student, lesson) {
-      const timeStr = (student.defaultTime && /^\d{2}:\d{2}$/.test(student.defaultTime)) ? student.defaultTime : '19:30';
-
-      // 1. Nếu buổi học đã được gán startTime cụ thể (YYYY-MM-DDTHH:mm)
-      if (lesson.startTime && lesson.startTime.includes('T')) {
-        const t = new Date(lesson.startTime).getTime();
-        if (!isNaN(t)) return t;
-      }
-
-      // 2. Bóc tách ngày (DD/MM) hoặc (DD/MM/YYYY) ngay trong cột A: "Buổi 9 (16/10)"
-      const match = String(lesson.buoi || '').match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
-      if (match) {
-        const dd = String(match[1]).padStart(2, '0');
-        const mm = String(match[2]).padStart(2, '0');
-        let yyyy = match[3] ? Number(match[3]) : new Date().getFullYear();
-        if (yyyy < 100) yyyy += 2000;
-        const parsed = new Date(`${yyyy}-${mm}-${dd}T${timeStr}`);
-        if (!isNaN(parsed.getTime())) return parsed.getTime();
-      }
-
-      // 3. Nếu chưa có ngày trên Sheet, xếp xuống dưới theo thứ tự buổi
-      return 9999999999999 + (Number(lesson.rowIndex) || 0);
-    }
-
-    function format24hFromTimestamp(ts, fallbackTime) {
-      if (ts >= 9999999999999) return `Chưa ghi ngày • Ca ${fallbackTime || '19:30'}`;
-      const d = new Date(ts);
-      const pad = n => String(n).padStart(2, '0');
-      return `${pad(d.getHours())}:${pad(d.getMinutes())} ngày ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
-    }
-
-    // ==================== TRẠM ĐIỀU PHỐI CHUNG (GOM & XẾP THEO THỨ TỰ NGÀY CỦA TẤT CẢ HỌC VIÊN) ====================
+    // ==================== TRẠM ĐIỀU PHỐI (SẮP XẾP THEO SỐ BUỔI) ====================
     function renderPrepReminders() {
       const container = document.getElementById('prepReminderList');
-      let alerts = [];
+      let allUpcoming = [];
 
-      // Lấy các buổi sắp tới của TẤT CẢ học viên và sắp xếp chung theo ngày gần nhất
       state.students.forEach(stu => {
-        // Chỉ lấy tối đa 2 buổi chưa dạy gần nhất của mỗi học viên để không bị 1 người chiếm hết bảng, sau đó sort chung theo ngày
-        const upcomingOfStu = (stu.lessons || []).filter(l => !l.tienDo);
-        upcomingOfStu.forEach(l => {
-          const sortTs = getLessonTimestampForSort(stu, l);
-          alerts.push({ stu, l, sortTs });
+        (stu.lessons || []).forEach(l => {
+          if (!l.tienDo) {
+            // Lấy số từ "Buổi X", nếu không có thì lấy rowIndex
+            const numMatch = String(l.buoi).match(/\d+/);
+            const buoiNum = numMatch ? parseInt(numMatch[0], 10) : l.rowIndex;
+            allUpcoming.push({ stu, l, buoiNum });
+          }
         });
       });
 
-      if (alerts.length === 0) {
+      if (allUpcoming.length === 0) {
         container.innerHTML = `<div class="text-xs text-slate-500 italic p-2">Không có ca dạy nào cần chuẩn bị.</div>`;
         return;
       }
 
-      // Sắp xếp chung toàn bộ học viên theo mốc ngày giờ từ gần nhất đến xa nhất
-      alerts.sort((a, b) => a.sortTs - b.sortTs);
+      // Xếp theo số buổi (Buổi 1, Buổi 2...)
+      allUpcoming.sort((a, b) => a.buoiNum - b.buoiNum);
 
-      container.innerHTML = alerts.slice(0, 15).map(item => {
-        const { stu, l, sortTs } = item;
+      // Lấy 4 ca gần nhất
+      const top4Nearest = allUpcoming.slice(0, 4);
+
+      container.innerHTML = top4Nearest.map(item => {
+        const { stu, l } = item;
         const remindMins = l.prepReminderMins || 45;
-        let timeBadge = '';
-
-        if (sortTs < 9999999999999) {
-          const prepDate = new Date(sortTs - remindMins * 60000);
-          const pad = n => String(n).padStart(2, '0');
-          timeBadge = `Soạn lúc ${pad(prepDate.getHours())}:${pad(prepDate.getMinutes())} • Dạy ${format24hFromTimestamp(sortTs, stu.defaultTime)}`;
-        } else {
-          timeBadge = `Nhắc trước ${remindMins}p • Ca ${stu.defaultTime || '19:30'}`;
-        }
-
         const dot = l.prepStatus === 'READY' ? '🟢' : (l.prepStatus === 'PREPARING' ? '🟡' : '🔴');
 
         return `
@@ -673,13 +646,13 @@
             </div>
             <div class="text-[11px] text-slate-300 truncate mt-0.5">${escapeHtml((l.noiDung || '').split('\n')[0])}</div>
             <div class="text-[10px] text-emerald-400 font-mono mt-1 flex items-center gap-1">
-              <i class="fa-regular fa-clock"></i> ${timeBadge}
+              <i class="fa-regular fa-bell"></i> Nhắc trước ${remindMins} phút
             </div>
           </div>`;
       }).join('');
     }
 
-    // ==================== HIỂN THỊ DẠNG BẢNG (GRID) & DẠNG THẺ (CARDS) ====================
+    // ==================== HIỂN THỊ MAIN WORKSPACE ====================
     function renderMainWorkspace() {
       const container = document.getElementById('mainContentArea');
       const stu = getActiveStudent();
@@ -710,9 +683,6 @@
         return;
       }
 
-      const hasHwLink = stu.hwDocsUrl && stu.hwDocsUrl !== '#';
-
-      // 1. CHẾ ĐỘ DẠNG THẺ (CARDS) - ĐÃ FIX HOÀN CHỈNH
       if (state.viewMode === 'CARDS') {
         let cardsHtml = lessons.map(l => `
           <div class="bg-white rounded-2xl border ${l.tienDo ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'} p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between">
@@ -733,10 +703,7 @@
               <div class="text-xs text-slate-800 whitespace-pre-line bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2.5 leading-relaxed">${escapeHtml(l.noiDung || 'Chưa có nội dung')}</div>
               
               <div class="text-xs text-slate-700 whitespace-pre-line mb-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
-                <div class="flex items-center justify-between mb-1">
-                  <b class="text-purple-900">📌 Bài tập về nhà:</b>
-                  ${hasHwLink ? `<a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>` : ''}
-                </div>
+                <b class="text-purple-900 block mb-1">📌 Bài tập về nhà:</b>
                 ${escapeHtml(l.btvn || 'Chưa giao BTVN')}
               </div>
 
@@ -770,52 +737,42 @@
         return;
       }
 
-      // 2. CHẾ ĐỘ DẠNG BẢNG (GRID) - ĐÃ TÁCH RIÊNG CỘT SOẠN BÀI KHỎI CỘT HỌC PHÍ & CHO PHÉP KÉO DÃN CỘT
       let rowsHtml = lessons.map(l => {
         const isSelected = state.selectedRowIndex === l.rowIndex;
         return `
           <tr class="border-b border-slate-200 hover:bg-blue-50/40 ${l.tienDo ? 'bg-slate-50/70' : 'bg-white'} ${isSelected ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/50' : ''}">
-            <!-- Cột A: Buổi & Trạng thái giáo án -->
             <td class="p-3 align-top text-center font-bold text-blue-900 border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'buoi', this.innerText)" class="inline-edit p-1 whitespace-pre-line">${escapeHtml(l.buoi)}</div>
               <div class="mt-1.5">${getPrepBadgeHtml(l.prepStatus)}</div>
             </td>
 
-            <!-- Cột Riêng: Nút Soạn Bài (Tách hoàn toàn khỏi cột Học phí) -->
             <td class="p-3 align-middle text-center border-r border-slate-200">
               <button onclick="openSplitPanel(${l.rowIndex})" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition inline-flex items-center gap-1.5">
                 <i class="fa-solid fa-pen-to-square"></i> Soạn bài
               </button>
             </td>
 
-            <!-- Cột B: Giai đoạn -->
             <td class="p-3 align-top text-xs border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'giaiDoan', this.innerText)" class="inline-edit p-1 font-medium">${escapeHtml(l.giaiDoan)}</div>
             </td>
 
-            <!-- Cột C: Nội dung -->
             <td class="p-3 align-top text-xs border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'noiDung', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.noiDung)}</div>
               ${l.script ? `<div onclick="openSplitPanel(${l.rowIndex})" class="mt-2 p-2 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-900 cursor-pointer"><i class="fa-solid fa-clipboard-list mr-1"></i><b>Kịch bản:</b> ${escapeHtml(l.script)}</div>` : ''}
             </td>
 
-            <!-- Cột D: BTVN -->
             <td class="p-3 align-top text-xs border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'btvn', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.btvn)}</div>
-              ${hasHwLink ? `<div class="mt-1.5 pt-1 border-t border-slate-100 text-right"><a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a></div>` : ''}
             </td>
 
-            <!-- Cột E: Tiến độ -->
             <td class="p-3 align-middle text-center border-r border-slate-200">
               <input type="checkbox" ${l.tienDo ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'tienDo', this.checked)" class="w-5 h-5 accent-slate-800 rounded cursor-pointer">
             </td>
 
-            <!-- Cột F: Nhận xét -->
             <td class="p-3 align-top text-xs border-r border-slate-200">
               <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'nhanXet', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.nhanXet)}</div>
             </td>
 
-            <!-- Cột G: Học phí (Độc lập hoàn toàn) -->
             <td class="p-3 align-middle text-center">
               <input type="checkbox" ${l.hocPhi ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'hocPhi', this.checked)" class="w-5 h-5 accent-blue-600 rounded cursor-pointer" title="Cột G: Học phí">
             </td>
@@ -841,7 +798,7 @@
           </table>
         </div>
         <div class="mt-3 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
-          <span>💡 <b>Mẹo:</b> Bạn có thể kéo dãn vạch ngăn cách trên tiêu đề bảng hoặc thanh ngăn cách 2 bên để chỉnh kích thước tùy ý.</span>
+          <span>💡 <b>Mẹo:</b> Kéo thanh xám có dấu <b>⋮</b> ở giữa cột trái và bảng Sheet để mở rộng/thu hẹp tùy ý.</span>
           <div class="flex gap-2">
             <button onclick="addSingleNewLesson()" class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold">
               <i class="fa-solid fa-plus mr-1"></i> Thêm 1 buổi tiếp theo (Buổi ${stu.lessons.length + 1})
@@ -855,52 +812,52 @@
       initTableColumnResizers();
     }
 
-    // ==================== KÉO DÃN CÁC KHUNG (RESIZABLE PANELS & TABLE COLUMNS) ====================
+    // ==================== KÉO DÃN CÁC KHUNG (RESIZABLE PANELS) ====================
     function initResizablePanels() {
-      // 1. Kéo dãn Sidebar Trái
       const leftGutter = document.getElementById('leftGutter');
       const leftSidebar = document.getElementById('leftSidebar');
       let isResizingLeft = false;
 
-      leftGutter.addEventListener('mousedown', () => {
+      leftGutter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
         isResizingLeft = true;
         leftGutter.classList.add('active');
         document.body.style.cursor = 'col-resize';
       });
 
-      // 2. Kéo dãn Khung Soạn bài bên phải
       const rightGutter = document.getElementById('rightGutter');
       const splitPanel = document.getElementById('splitViewPanel');
       let isResizingRight = false;
 
-      rightGutter.addEventListener('mousedown', () => {
+      rightGutter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
         isResizingRight = true;
         rightGutter.classList.add('active');
         document.body.style.cursor = 'col-resize';
       });
 
-      // 3. Kéo dãn chiều dọc giữa Danh sách học sinh và Trạm điều phối
       const vertResizer = document.getElementById('sidebarVerticalResizer');
       const stuBox = document.getElementById('sidebarStudentsBox');
       let isResizingVert = false;
 
-      vertResizer.addEventListener('mousedown', () => {
+      vertResizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
         isResizingVert = true;
         document.body.style.cursor = 'row-resize';
       });
 
       document.addEventListener('mousemove', (e) => {
         if (isResizingLeft) {
-          const newW = Math.min(Math.max(e.clientX, 240), 520);
+          const newW = Math.min(Math.max(e.clientX, 220), 600);
           leftSidebar.style.width = newW + 'px';
         }
         if (isResizingRight) {
-          const newW = Math.min(Math.max(window.innerWidth - e.clientX, 320), 850);
+          const newW = Math.min(Math.max(window.innerWidth - e.clientX, 300), 850);
           splitPanel.style.width = newW + 'px';
         }
         if (isResizingVert) {
           const rect = leftSidebar.getBoundingClientRect();
-          const newH = Math.min(Math.max(e.clientY - rect.top - 60, 120), rect.height - 180);
+          const newH = Math.min(Math.max(e.clientY - rect.top - 60, 120), rect.height - 160);
           stuBox.style.height = newH + 'px';
         }
       });
@@ -1142,7 +1099,7 @@
       } catch (e) {}
     }
 
-    // ==================== QUẢN LÝ HỌC VIÊN & BUỔI HỌC ====================
+    // ==================== QUẢN LÝ HỌC VIÊN ====================
     function deleteStudent(studentId, event) {
       if (event) event.stopPropagation();
       const stu = state.students.find(s => s.id === studentId);
@@ -1234,7 +1191,6 @@
           : "filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100";
       });
 
-      // Cập nhật màu nút chế độ xem Bảng / Thẻ
       document.getElementById('view-GRID').className = state.viewMode === 'GRID'
         ? "px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white flex items-center gap-1.5 transition"
         : "px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition";
@@ -1279,14 +1235,11 @@
       state.selectedRowIndex = rowIndex;
       document.getElementById('splitViewPanel').classList.remove('hidden');
       document.getElementById('rightGutter').classList.remove('hidden');
-      document.getElementById('panelQuickDocsLink').href = stu.docsUrl || '#';
-      document.getElementById('panelQuickHwDocsLink').href = stu.hwDocsUrl || '#';
-      document.getElementById('panelBtvnOpenLink').href = stu.hwDocsUrl || '#';
+      document.getElementById('rightGutter').classList.add('md:flex');
       
       document.getElementById('panelLessonBadge').innerText = `Dòng ${lesson.rowIndex} • ${lesson.buoi.replace(/\n/g, ' ')}`;
       document.getElementById('panelPrepStatus').value = lesson.prepStatus || 'UNPREPARED';
 
-      // Tách ngày và giờ 24h từ startTime
       let datePart = '', timePart = stu.defaultTime || '19:30';
       if (lesson.startTime && lesson.startTime.includes('T')) {
         const parts = lesson.startTime.split('T');
@@ -1339,10 +1292,10 @@
       state.selectedRowIndex = null;
       document.getElementById('splitViewPanel').classList.add('hidden');
       document.getElementById('rightGutter').classList.add('hidden');
+      document.getElementById('rightGutter').classList.remove('md:flex');
       renderMainWorkspace();
     }
 
-    // ==================== THÊM 1 BUỔI HOẶC NHIỀU BUỔI + RẢI LỊCH 24H ====================
     function addSingleNewLesson() {
       const stu = getActiveStudent();
       if (!stu) return;
@@ -1352,15 +1305,8 @@
         rowIndex: nextRowIndex,
         buoi: `Buổi ${nextNum}\n(Chưa xếp)`,
         giaiDoan: stu.lessons[stu.lessons.length - 1]?.giaiDoan || 'Giai đoạn tiếp theo',
-        noiDung: '',
-        btvn: '',
-        tienDo: false,
-        nhanXet: '',
-        hocPhi: false,
-        startTime: '',
-        prepReminderMins: 45,
-        prepStatus: 'UNPREPARED',
-        script: ''
+        noiDung: '', btvn: '', tienDo: false, nhanXet: '', hocPhi: false,
+        startTime: '', prepReminderMins: 45, prepStatus: 'UNPREPARED', script: ''
       };
       stu.lessons.push(newLesson);
       saveToLocal();
@@ -1396,7 +1342,6 @@
       stu.defaultTime = classTime;
       stu.daysOfWeek = checkedDays;
 
-      // Cộng thêm buổi mới nếu học viên học nhiều hơn 32 buổi
       for (let i = 0; i < addMoreCount; i++) {
         const nextRowIndex = stu.lessons.length > 0 ? Math.max(...stu.lessons.map(l => l.rowIndex)) + 1 : 2;
         const nextLessonNum = stu.lessons.length + 1;
@@ -1404,15 +1349,8 @@
           rowIndex: nextRowIndex,
           buoi: `Buổi ${nextLessonNum}`,
           giaiDoan: stu.lessons[stu.lessons.length - 1]?.giaiDoan || 'Giai đoạn tiếp theo',
-          noiDung: '',
-          btvn: '',
-          tienDo: false,
-          nhanXet: '',
-          hocPhi: false,
-          startTime: '',
-          prepReminderMins: 45,
-          prepStatus: 'UNPREPARED',
-          script: ''
+          noiDung: '', btvn: '', tienDo: false, nhanXet: '', hocPhi: false,
+          startTime: '', prepReminderMins: 45, prepStatus: 'UNPREPARED', script: ''
         });
       }
 
