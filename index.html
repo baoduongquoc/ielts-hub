@@ -1607,6 +1607,64 @@
     }
     function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     window.onload = initApp;
+    window.onload = initApp; // <-- Dòng 1609 hiện tại của bạn
+
+    // ========= DÁN ĐOẠN NÀY VÀO NGAY DƯỚI DÒNG 1609 =========
+    const DEFAULT_CLOUD_URL = "https://script.google.com/macros/s/AKfycbxCPnNqpUjp1wMaELhLZiGm0_gv9KHzbJZTi5fDH6xjZVqkkHvv-6rv9Pp6yNLEpmE1/exec";
+
+    // Tự động gắn sẵn link Google Cloud cho mọi thiết bị (Điện thoại / Laptop khác)
+    if (DEFAULT_CLOUD_URL && DEFAULT_CLOUD_URL.startsWith("https://script.google.com")) {
+      localStorage.setItem('ielts_hub_gas_url', DEFAULT_CLOUD_URL);
+      if (typeof state !== 'undefined') state.gasWebhookUrl = DEFAULT_CLOUD_URL;
+    }
+
+    // Tự động bắn dữ liệu lên Google Cloud mỗi khi hàm saveToLocal() được gọi
+    if (typeof saveToLocal === 'function') {
+      const _origSaveToLocal = saveToLocal;
+      saveToLocal = function(...args) {
+        _origSaveToLocal.apply(this, args);
+        const url = (typeof state !== 'undefined' && state.gasWebhookUrl) || localStorage.getItem('ielts_hub_gas_url');
+        if (!url || !url.startsWith("https://script.google.com")) return;
+
+        setSyncBadge('SYNCING');
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'SAVE_CLOUD',
+            students: state.students,
+            activeStudentId: state.activeStudentId
+          })
+        })
+        .then(() => setSyncBadge('DONE'))
+        .catch(err => console.error('Cloud sync error:', err));
+      };
+    }
+
+    // Tự động tải danh sách học viên từ Google về ngay khi mở web trên Điện thoại / Laptop khác
+    window.addEventListener('load', async () => {
+      const url = (typeof state !== 'undefined' && state.gasWebhookUrl) || localStorage.getItem('ielts_hub_gas_url');
+      if (!url || !url.startsWith("https://script.google.com")) return;
+
+      try {
+        setSyncBadge('SYNCING');
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && Array.isArray(data.students) && data.students.length > 0) {
+          state.students = data.students;
+          state.activeStudentId = data.activeStudentId || data.students[0].id;
+          localStorage.setItem('ielts_hub_students', JSON.stringify(state.students));
+          renderAll();
+        } else if (state.students && state.students.length > 0) {
+          // Lần đầu tiên: nếu trên Cloud chưa có gì thì đẩy dữ liệu từ máy chính lên Cloud
+          saveToLocal();
+        }
+        setSyncBadge('DONE');
+      } catch (e) {
+        console.error('Load cloud error:', e);
+      }
+    });
+    // ========= KẾT THÚC ĐOẠN DÁN THÊM =========
   </script>
 </body>
 </html>
