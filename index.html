@@ -13,12 +13,31 @@
     .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     .inline-edit:hover { background-color: #f8fafc; outline: 1px dashed #94a3b8; }
     .inline-edit:focus { background-color: #ffffff; outline: 2px solid #3b82f6; border-radius: 4px; }
+
+    /* Thanh kéo dãn cột trong bảng */
+    th.resizable-th { position: relative; overflow: hidden; }
+    .col-resizer {
+      position: absolute; top: 0; right: 0; width: 6px; height: 100%;
+      cursor: col-resize; user-select: none;
+    }
+    .col-resizer:hover { background-color: #60a5fa; }
+
+    /* Thanh kéo dãn giữa các khu vực (Sidebar - Main - SplitPanel) */
+    . gutter-resizer {
+      width: 6px; cursor: col-resize; background-color: transparent;
+      transition: background-color 0.15s; z-index: 30; flex-shrink: 0;
+    }
+    .gutter-resizer:hover, .gutter-resizer.active { background-color: #3b82f6; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 h-screen flex overflow-hidden">
+<body class="bg-slate-100 text-slate-800 h-screen flex overflow-hidden select-none md:select-auto">
+
+  <!-- Lớp phủ mờ khi mở Sidebar trên điện thoại -->
+  <div id="mobileOverlay" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-slate-900/60 z-30 hidden md:hidden"></div>
 
   <!-- ==================== SIDEBAR TRÁI: QUẢN LÝ LỚP & TRẠM ĐIỀU PHỐI ==================== -->
-  <aside class="w-80 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-xl z-20">
+  <aside id="leftSidebar" style="width: 320px;" class="fixed md:static inset-y-0 left-0 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-2xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-200 min-w-[240px] max-w-[520px]">
+    <!-- Logo & Cài đặt -->
     <div class="p-4 border-b border-slate-800 flex items-center justify-between">
       <div class="flex items-center space-x-2.5">
         <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-lg shadow">
@@ -26,123 +45,151 @@
         </div>
         <div>
           <h1 class="font-bold text-sm tracking-wide">IELTS PREP HUB</h1>
-          <p class="text-[11px] text-slate-400">Lộ trình • Lý thuyết • BTVN</p>
+          <p class="text-[11px] text-slate-400">Đồng bộ Google Drive & Sheet</p>
         </div>
       </div>
-      <button onclick="openSettingsModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Cấu hình Google Apps Script">
-        <i class="fa-solid fa-gear"></i>
-      </button>
+      <div class="flex items-center gap-1">
+        <button onclick="syncStudentsFromCloud(true)" class="text-emerald-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Tải danh sách học viên từ Google Drive về máy này">
+          <i class="fa-solid fa-cloud-arrow-down"></i>
+        </button>
+        <button onclick="openSettingsModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Cấu hình Google Apps Script (Đồng bộ tài khoản Google)">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+        <button onclick="toggleMobileSidebar(false)" class="md:hidden text-slate-400 hover:text-white p-1.5">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
     </div>
 
-    <div class="p-4 border-b border-slate-800 flex-1 overflow-y-auto custom-scroll">
-      <div class="flex items-center justify-between mb-3">
+    <!-- Danh sách Học viên / Lớp học -->
+    <div id="sidebarStudentsBox" style="height: 45%;" class="p-4 border-b border-slate-800 overflow-y-auto custom-scroll flex flex-col min-h-[140px]">
+      <div class="flex items-center justify-between mb-3 shrink-0">
         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Danh sách Học viên</span>
         <button onclick="openAddStudentModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded-md font-medium flex items-center gap-1 transition">
           <i class="fa-solid fa-plus"></i> Mở lớp
         </button>
       </div>
-      <div id="studentList" class="space-y-1.5"></div>
+      <div id="studentList" class="space-y-1.5 flex-1"></div>
     </div>
 
-    <div class="p-4 bg-slate-950/80 border-t border-slate-800 h-80 flex flex-col">
-      <div class="flex items-center justify-between mb-2">
+    <!-- Thanh kéo dãn chiều cao giữa Danh sách học viên và Trạm điều phối -->
+    <div id="sidebarVerticalResizer" class="h-1.5 bg-slate-800 hover:bg-blue-500 cursor-row-resize shrink-0 transition" title="Kéo lên/xuống để chỉnh độ cao"></div>
+
+    <!-- TRẠM ĐIỀU PHỐI & NHẮC CHUẨN BỊ GIÁO ÁN (XẾP CHUNG TẤT CẢ HỌC VIÊN THEO NGÀY GẦN NHẤT) -->
+    <div class="p-4 bg-slate-950/90 flex-1 flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between mb-1.5 shrink-0">
         <div class="flex items-center gap-1.5">
           <span class="relative flex h-2.5 w-2.5">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
           </span>
-          <h2 class="text-xs font-bold uppercase tracking-wider text-amber-400">Trạm Điều Phối Giáo Án</h2>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-amber-400">Trạm Điều Phối Chung</h2>
         </div>
-        <span id="clockGMT7" class="text-[11px] text-slate-400 font-mono"></span>
+        <span id="clockGMT7" class="text-[11px] text-emerald-400 font-mono font-semibold"></span>
       </div>
-      <p class="text-[11px] text-slate-400 mb-2.5">Cảnh báo các ca sắp dạy cần chuẩn bị bài:</p>
+      <p class="text-[11px] text-slate-400 mb-2 shrink-0">Tất cả học viên • Xếp từ ngày gần nhất:</p>
       <div id="prepReminderList" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-1"></div>
     </div>
   </aside>
 
+  <!-- Thanh kéo dãn độ rộng Sidebar Trái (Desktop) -->
+  <div id="leftGutter" class="gutter-resizer hidden md:block" title="Kéo trái/phải để chỉnh độ rộng cột học viên"></div>
+
   <!-- ==================== KHU VỰC TRUNG TÂM: WORKSPACE ==================== -->
-  <main class="flex-1 flex flex-col h-full overflow-hidden">
+  <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
     
-    <header class="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
-      <div class="flex items-center gap-4">
-        <div>
-          <div class="flex items-center gap-2.5">
-            <h2 id="currentStudentName" class="text-xl font-bold text-slate-800">Chưa có học viên</h2>
-            <span id="syncBadge" class="hidden text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium items-center gap-1">
+    <!-- Thanh Tiêu Đề (Header) -->
+    <header class="bg-white border-b border-slate-200 px-3 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-sm">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <button onclick="toggleMobileSidebar(true)" class="md:hidden p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 id="currentStudentName" class="text-base md:text-xl font-bold text-slate-800 truncate">Chưa có học viên</h2>
+            <span id="syncBadge" class="hidden text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium items-center gap-1">
               <i class="fa-solid fa-check-circle"></i> Đã đồng bộ
             </span>
           </div>
-          <p id="currentStudentSchedule" class="text-xs text-slate-500 mt-0.5">Hãy bấm "+ Mở lớp" để dán link Lộ trình, Lý thuyết và BTVN của học viên.</p>
+          <p id="currentStudentSchedule" class="text-[11px] md:text-xs text-slate-500 mt-0.5 truncate">Hãy bấm "+ Mở lớp" để dán link Lộ trình, Lý thuyết và BTVN.</p>
         </div>
       </div>
 
-      <!-- 2 NÚT ĐỒNG BỘ RIÊNG BIỆT: SHEET -> WEB & WEB -> SHEET -->
-      <div id="headerActionButtons" class="hidden items-center gap-2 flex-wrap">
-        <a id="headerSheetBtn" href="#" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition">
-          <i class="fa-solid fa-table"></i> Lộ trình (Sheet)
+      <!-- Các nút thao tác nhanh -->
+      <div id="headerActionButtons" class="hidden items-center gap-1.5 flex-wrap">
+        <a id="headerSheetBtn" href="#" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition">
+          <i class="fa-solid fa-table"></i> <span class="hidden sm:inline">Lộ trình</span> (Sheet)
         </a>
-        <a id="headerDocsBtn" href="#" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition">
-          <i class="fa-solid fa-book-open"></i> Lý thuyết (Docs)
+        <a id="headerDocsBtn" href="#" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition">
+          <i class="fa-solid fa-book-open"></i> <span class="hidden sm:inline">Lý thuyết</span> (Docs)
         </a>
-        <a id="headerHwDocsBtn" href="#" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-sm transition">
-          <i class="fa-solid fa-file-pen"></i> Làm BTVN (Docs)
+        <a id="headerHwDocsBtn" href="#" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-sm transition">
+          <i class="fa-solid fa-file-pen"></i> <span class="hidden sm:inline">Làm</span> BTVN
         </a>
         
-        <!-- NÚT 1: KÉO TỪ SHEET VỀ WEB -->
-        <button onclick="syncFromGoogleSheet(true)" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition" title="Copy dữ liệu mới nhất từ Google Sheet về Web">
+        <button onclick="syncFromGoogleSheet(true)" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition" title="Copy dữ liệu mới nhất từ Google Sheet về Web">
           <i class="fa-solid fa-cloud-arrow-down"></i> Sheet ➔ Web
         </button>
-        <!-- NÚT 2: ĐẨY TOÀN BỘ TỪ WEB LÊN SHEET -->
-        <button onclick="pushAllWebToGoogleSheet()" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm transition" title="Cập nhật toàn bộ lộ trình đang có trên Web sang Google Sheet">
+        <button onclick="pushAllWebToGoogleSheet()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm transition" title="Cập nhật toàn bộ lộ trình đang có trên Web sang Google Sheet">
           <i class="fa-solid fa-cloud-arrow-up"></i> Web ➔ Sheet
         </button>
 
-        <button onclick="openEditLinksModal()" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition" title="Sửa lại 3 đường Link">
-          <i class="fa-solid fa-link"></i> Sửa Link
+        <button onclick="addSingleNewLesson()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition" title="Thêm 1 buổi học mới vào cuối lộ trình">
+          <i class="fa-solid fa-plus"></i> Thêm buổi
         </button>
-        <button onclick="openAutoScheduleModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition">
-          <i class="fa-solid fa-calendar-plus"></i> Rải lịch
+        <button onclick="openAutoScheduleModal()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition">
+          <i class="fa-solid fa-calendar-plus"></i> Rải lịch / +Nhiều buổi
         </button>
-        <button onclick="deleteCurrentStudent()" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 text-xs font-semibold transition" title="Xóa học viên">
-          <i class="fa-solid fa-trash-can"></i> Xóa
+        <button onclick="openEditLinksModal()" class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition" title="Sửa 3 đường Link">
+          <i class="fa-solid fa-link"></i>
+        </button>
+        <button onclick="deleteCurrentStudent()" class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 text-xs font-semibold transition" title="Xóa học viên">
+          <i class="fa-solid fa-trash-can"></i>
         </button>
       </div>
     </header>
 
-    <div class="bg-slate-50 border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+    <!-- Thanh Công Cụ: Bộ Lọc & Chuyển Đổi Dạng Bảng / Dạng Thẻ -->
+    <div class="bg-slate-50 border-b border-slate-200 px-3 md:px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
       <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-xs font-semibold text-slate-500 mr-1"><i class="fa-solid fa-filter mr-1"></i>Lọc nhanh:</span>
-        <button onclick="setFilter('ALL')" id="filter-ALL" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white">
+        <button onclick="setFilter('ALL')" id="filter-ALL" class="filter-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-white">
           Tất cả (<span id="count-ALL">0</span>)
         </button>
-        <button onclick="setFilter('UPCOMING')" id="filter-UPCOMING" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
+        <button onclick="setFilter('UPCOMING')" id="filter-UPCOMING" class="filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
           ⏳ Sắp dạy (<span id="count-UPCOMING">0</span>)
         </button>
-        <button onclick="setFilter('UNPREPARED')" id="filter-UNPREPARED" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
+        <button onclick="setFilter('UNPREPARED')" id="filter-UNPREPARED" class="filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
           🔴 Chưa soạn (<span id="count-UNPREPARED">0</span>)
         </button>
-        <button onclick="setFilter('COMPLETED')" id="filter-COMPLETED" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
+        <button onclick="setFilter('COMPLETED')" id="filter-COMPLETED" class="filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100">
           ✅ Đã dạy (<span id="count-COMPLETED">0</span>)
         </button>
       </div>
 
+      <!-- Nút chuyển đổi Dạng Bảng <-> Dạng Thẻ -->
       <div class="flex items-center gap-2">
-        <div class="bg-white border border-slate-200 rounded-lg p-0.5 flex">
-          <button onclick="setViewMode('GRID')" id="view-GRID" class="px-3 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white flex items-center gap-1.5">
+        <div class="bg-white border border-slate-200 rounded-lg p-0.5 flex shadow-sm">
+          <button onclick="setViewMode('GRID')" id="view-GRID" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white flex items-center gap-1.5 transition">
             <i class="fa-solid fa-table-cells"></i> Dạng Bảng
           </button>
-          <button onclick="setViewMode('CARDS')" id="view-CARDS" class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
+          <button onclick="setViewMode('CARDS')" id="view-CARDS" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition">
             <i class="fa-solid fa-grip"></i> Dạng Thẻ
           </button>
         </div>
       </div>
     </div>
 
+    <!-- Khu vực Nội dung chính + Thanh kéo dãn + Khung trượt Split-View -->
     <div class="flex-1 flex overflow-hidden relative">
-      <div id="mainContentArea" class="flex-1 overflow-y-auto custom-scroll p-6"></div>
+      
+      <!-- Danh sách Buổi học (Bảng hoặc Thẻ) -->
+      <div id="mainContentArea" class="flex-1 overflow-y-auto custom-scroll p-3 md:p-6 min-w-0"></div>
 
-      <!-- SPLIT-VIEW PANEL -->
-      <div id="splitViewPanel" class="w-[460px] bg-white border-l border-slate-200 h-full flex flex-col shadow-2xl shrink-0 hidden">
+      <!-- Thanh kéo dãn độ rộng Split-View Panel (Desktop) -->
+      <div id="rightGutter" class="gutter-resizer hidden" title="Kéo trái/phải để phóng to/thu nhỏ khung Soạn bài"></div>
+
+      <!-- KHUNG SOẠN THẢO KỊCH BẢN & CHECKLIST (SPLIT-VIEW PANEL BÊN PHẢI) -->
+      <div id="splitViewPanel" style="width: 460px;" class="fixed md:static inset-0 md:inset-auto bg-white border-l border-slate-200 h-full flex flex-col shadow-2xl shrink-0 z-40 hidden min-w-[300px] max-w-[850px]">
         <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div>
             <span id="panelLessonBadge" class="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-700">Buổi 1</span>
@@ -154,10 +201,11 @@
         </div>
 
         <div class="p-4 overflow-y-auto custom-scroll flex-1 space-y-4">
+          <!-- Hẹn giờ dạy theo chuẩn 24h (Không dùng SA/CH) -->
           <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                <i class="fa-solid fa-bell text-amber-600"></i> Hẹn giờ dạy & Nhắc soạn bài
+                <i class="fa-solid fa-bell text-amber-600"></i> Hẹn giờ dạy (24h) & Nhắc soạn bài
               </span>
               <select id="panelPrepStatus" onchange="saveFromSplitPanel()" class="text-xs font-semibold rounded-lg border border-amber-300 px-2.5 py-1 bg-white">
                 <option value="UNPREPARED">🔴 Chưa soạn</option>
@@ -166,14 +214,18 @@
               </select>
             </div>
 
-            <div class="grid grid-cols-2 gap-2.5">
+            <div class="grid grid-cols-3 gap-2">
               <div>
-                <label class="block text-[11px] font-medium text-slate-600 mb-1">Ngày & Giờ vào ca (GMT+7)</label>
-                <input type="datetime-local" id="panelStartTime" onchange="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white">
+                <label class="block text-[11px] font-medium text-slate-600 mb-1">Ngày dạy</label>
+                <input type="date" id="panelStartDate" onchange="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white">
               </div>
               <div>
-                <label class="block text-[11px] font-medium text-slate-600 mb-1">Nhắc trước giờ dạy</label>
-                <select id="panelReminderMins" onchange="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white">
+                <label class="block text-[11px] font-medium text-slate-600 mb-1">Giờ dạy (24h)</label>
+                <select id="panelStartHour24" onchange="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white font-mono"></select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-medium text-slate-600 mb-1">Nhắc trước</label>
+                <select id="panelReminderMins" onchange="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white">
                   <option value="30">30 phút</option>
                   <option value="45">45 phút</option>
                   <option value="60">1 tiếng</option>
@@ -183,6 +235,7 @@
             </div>
           </div>
 
+          <!-- Kịch bản giảng dạy & Checklist -->
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -193,17 +246,18 @@
                 <a id="panelQuickHwDocsLink" href="#" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>
               </div>
             </div>
-            <textarea id="panelScript" oninput="saveFromSplitPanel()" rows="4" class="w-full text-xs border border-slate-300 rounded-xl p-3 leading-relaxed"></textarea>
+            <textarea id="panelScript" oninput="saveFromSplitPanel()" rows="4" placeholder="- 5p đầu: Kiểm tra từ vựng Quizlet&#10;- Mở file Docs BTVN chữa bài Writing..." class="w-full text-xs border border-slate-300 rounded-xl p-3 leading-relaxed resize-y"></textarea>
           </div>
 
+          <!-- Đồng bộ Google Sheets -->
           <div class="border-t border-slate-200 pt-3 space-y-3">
             <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-              <i class="fa-solid fa-table"></i> Đồng bộ Google Sheets
+              <i class="fa-solid fa-table"></i> Dữ liệu đồng bộ Google Sheets
             </span>
 
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cột A: Buổi</label>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cột A: Buổi & Ngày (VD: Buổi 9 (16/10))</label>
                 <input type="text" id="panelBuoi" oninput="saveFromSplitPanel()" class="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium">
               </div>
               <div>
@@ -214,20 +268,20 @@
 
             <div>
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cột C: Nội dung bài học</label>
-              <textarea id="panelNoiDung" oninput="saveFromSplitPanel()" rows="4" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed"></textarea>
+              <textarea id="panelNoiDung" oninput="saveFromSplitPanel()" rows="4" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed resize-y"></textarea>
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="text-[11px] font-semibold text-slate-600">Cột D: Bài tập về nhà</label>
+                <label class="text-[11px] font-semibold text-slate-600">Cột D: Bài tập về nhà (BTVN)</label>
                 <a id="panelBtvnOpenLink" href="#" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở file BTVN ↗</a>
               </div>
-              <textarea id="panelBtvn" oninput="saveFromSplitPanel()" rows="3" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed"></textarea>
+              <textarea id="panelBtvn" oninput="saveFromSplitPanel()" rows="3" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed resize-y"></textarea>
             </div>
 
             <div>
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cột F: Nhận xét</label>
-              <textarea id="panelNhanXet" oninput="saveFromSplitPanel()" rows="3" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed"></textarea>
+              <textarea id="panelNhanXet" oninput="saveFromSplitPanel()" rows="3" class="w-full text-xs border border-slate-300 rounded-lg p-2.5 leading-relaxed resize-y"></textarea>
             </div>
 
             <div class="flex items-center justify-between pt-1">
@@ -246,8 +300,8 @@
     </div>
   </main>
 
-  <!-- MODAL THÊM HỌC VIÊN -->
-  <div id="addStudentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+  <!-- ==================== MODAL THÊM HỌC VIÊN ==================== -->
+  <div id="addStudentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden p-3">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
       <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
         <h3 class="font-bold text-base"><i class="fa-solid fa-user-plus mr-2 text-blue-400"></i>Thêm Học Viên Mới</h3>
@@ -276,8 +330,8 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Giờ vào ca (GMT+7)</label>
-            <input type="time" id="newStudentTime" value="19:30" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+            <label class="block font-semibold text-slate-700 mb-1">Giờ vào ca (Định dạng 24h)</label>
+            <select id="newStudentTime24" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white font-mono"></select>
           </div>
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Nạp lộ trình</label>
@@ -289,7 +343,7 @@
         </div>
 
         <div>
-          <label class="block font-semibold text-slate-700 mb-1.5">Thứ học trong tuần</label>
+          <label class="block font-semibold text-slate-700 mb-1.5">Thứ học cố định trong tuần</label>
           <div class="flex gap-2 flex-wrap" id="newStudentDays">
             <label class="px-2.5 py-1.5 border rounded-lg cursor-pointer"><input type="checkbox" value="1" class="mr-1">T2</label>
             <label class="px-2.5 py-1.5 border rounded-lg cursor-pointer"><input type="checkbox" value="2" class="mr-1">T3</label>
@@ -308,20 +362,26 @@
     </div>
   </div>
 
-  <!-- MODAL SỬA LINK -->
-  <div id="editLinksModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+  <!-- ==================== MODAL SỬA LINK ==================== -->
+  <div id="editLinksModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden p-3">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
       <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-        <h3 class="font-bold text-sm">Cập nhật Link</h3>
+        <h3 class="font-bold text-sm">Cập nhật Link & Giờ Học</h3>
         <button onclick="closeEditLinksModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="p-6 space-y-4 text-xs">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Tên Lớp</label>
-          <input type="text" id="editStudentName" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Tên Lớp</label>
+            <input type="text" id="editStudentName" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Giờ dạy cố định (24h)</label>
+            <select id="editStudentTime24" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white font-mono"></select>
+          </div>
         </div>
         <div>
-          <label class="block font-bold text-emerald-800 mb-1">1. Link Sheet</label>
+          <label class="block font-bold text-emerald-800 mb-1">1. Link Sheet Lộ Trình</label>
           <input type="text" id="editStudentSheetUrl" class="w-full border border-emerald-300 rounded-lg px-3 py-2">
         </div>
         <div>
@@ -340,26 +400,29 @@
     </div>
   </div>
 
-  <!-- MODAL RẢI LỊCH -->
-  <div id="autoScheduleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+  <!-- ==================== MODAL RẢI LỊCH & THÊM NHIỀU BUỔI HỌC ==================== -->
+  <div id="autoScheduleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden p-3">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
       <div class="px-6 py-4 bg-indigo-900 text-white flex items-center justify-between">
-        <h3 class="font-bold text-sm">Rải Lịch Tự Động (GMT+7)</h3>
+        <h3 class="font-bold text-sm"><i class="fa-solid fa-calendar-plus mr-2"></i>Rải Lịch Tự Động (24h) & Cộng Thêm Buổi</h3>
         <button onclick="closeAutoScheduleModal()" class="text-indigo-200 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-600 leading-relaxed">
+          Giữ nguyên các buổi <b>Đã dạy</b>, tự động tính ngày cho các buổi <b>Chưa dạy</b> và cho phép cộng thêm buổi mới nếu học sinh học nhiều hơn 32 buổi.
+        </p>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Ngày bắt đầu</label>
+            <label class="block font-semibold text-slate-700 mb-1">Ngày bắt đầu rải lịch</label>
             <input type="date" id="schedStartDate" class="w-full border border-slate-300 rounded-lg px-3 py-2">
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Giờ vào ca</label>
-            <input type="time" id="schedTime" value="19:30" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+            <label class="block font-semibold text-slate-700 mb-1">Giờ vào ca (24h)</label>
+            <select id="schedTime24" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white font-mono"></select>
           </div>
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Thứ học</label>
+          <label class="block font-semibold text-slate-700 mb-1">Thứ học cố định trong tuần</label>
           <div class="flex gap-1.5 flex-wrap" id="schedDays">
             <label class="px-2 py-1 border rounded cursor-pointer"><input type="checkbox" value="1" class="mr-1">T2</label>
             <label class="px-2 py-1 border rounded cursor-pointer"><input type="checkbox" value="2" class="mr-1">T3</label>
@@ -370,35 +433,48 @@
             <label class="px-2 py-1 border rounded cursor-pointer"><input type="checkbox" value="0" class="mr-1">CN</label>
           </div>
         </div>
+        <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+          <label class="block font-bold text-indigo-900 mb-1">➕ Cộng thêm bao nhiêu buổi mới vào cuối lộ trình?</label>
+          <input type="number" id="schedAddMoreCount" value="0" min="0" max="100" class="w-full border border-indigo-300 rounded-lg px-3 py-1.5 bg-white font-bold text-indigo-900">
+          <p class="text-[11px] text-indigo-700 mt-1">Điền số buổi muốn thêm (VD: 5, 10 buổi...) hoặc để 0 nếu chỉ muốn xếp lại ngày cho các buổi hiện có.</p>
+        </div>
       </div>
       <div class="px-6 py-3 bg-slate-50 border-t flex justify-end gap-2">
         <button onclick="closeAutoScheduleModal()" class="px-4 py-2 rounded-lg border text-xs font-semibold text-slate-600">Đóng</button>
-        <button onclick="applyAutoSchedule()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Áp dụng</button>
+        <button onclick="applyAutoSchedule()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Áp dụng & Cập nhật Sheet</button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL CÀI ĐẶT -->
-  <div id="settingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+  <!-- ==================== MODAL CÀI ĐẶT & ĐỒNG BỘ ĐÁM MÂY GOOGLE DRIVE ==================== -->
+  <div id="settingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 hidden p-3">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
       <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-        <h3 class="font-bold text-sm">Cấu hình Google Apps Script</h3>
+        <h3 class="font-bold text-sm"><i class="fa-solid fa-cloud mr-2 text-emerald-400"></i>Cấu hình Đồng bộ Tài khoản Google (Drive & Sheets)</h3>
         <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="p-6 space-y-4 text-xs">
         <div>
-          <label class="block font-bold text-slate-700 mb-1">Google Apps Script Web App URL</label>
+          <label class="block font-bold text-slate-700 mb-1">Google Apps Script Web App URL (Dán 1 lần để đồng bộ Máy tính & Điện thoại)</label>
           <input type="text" id="gasWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs">
+        </div>
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button onclick="pushStudentsToCloud(true)" class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Lưu danh sách học sinh lên Google Drive
+          </button>
+          <button onclick="syncStudentsFromCloud(true)" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Tải danh sách học sinh từ Google Drive về máy này
+          </button>
         </div>
       </div>
       <div class="px-6 py-3 bg-slate-50 border-t flex justify-end gap-2">
         <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg border text-xs font-semibold text-slate-600">Đóng</button>
-        <button onclick="saveGasSettings()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">Lưu</button>
+        <button onclick="saveGasSettings()" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold">Lưu URL</button>
       </div>
     </div>
   </div>
 
-  <!-- SCRIPT -->
+  <!-- ==================== JAVASCRIPT LOGIC TOÀN HỆ THỐNG ==================== -->
   <script>
     let state = {
       students: [],
@@ -409,36 +485,477 @@
       gasWebhookUrl: localStorage.getItem('ielts_hub_gas_url') || ''
     };
 
-    function initApp() {
+    // Khởi tạo danh sách chọn giờ chuẩn 24h (00:00 -> 23:45) không bao giờ hiện SA/CH
+    function populate24HourSelects() {
+      const ids = ['panelStartHour24', 'newStudentTime24', 'editStudentTime24', 'schedTime24'];
+      let optionsHtml = '';
+      for (let h = 6; h <= 23; h++) {
+        for (let m of [0, 15, 30, 45]) {
+          const hh = String(h).padStart(2, '0');
+          const mm = String(m).padStart(2, '0');
+          const val = `${hh}:${mm}`;
+          optionsHtml += `<option value="${val}">${val} (24h)</option>`;
+        }
+      }
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.innerHTML = optionsHtml;
+          el.value = '19:30';
+        }
+      });
+    }
+
+    async function initApp() {
+      populate24HourSelects();
+      initResizablePanels();
+
       const saved = localStorage.getItem('ielts_hub_students_v2');
       if (saved) {
         try { state.students = JSON.parse(saved); } catch (e) { state.students = []; }
       }
       state.activeStudentId = state.students[0]?.id || null;
       document.getElementById('gasWebhookUrl').value = state.gasWebhookUrl;
+
       renderAll();
       updateClockGMT7();
       setInterval(updateClockGMT7, 15000);
+
+      // Nếu máy này (VD: điện thoại mới mở) đang trống mà đã có link Google Apps Script -> Tự tải danh sách học viên từ Google Drive về
+      if (state.students.length === 0 && state.gasWebhookUrl) {
+        await syncStudentsFromCloud(false);
+      }
     }
 
     function saveToLocal() {
       localStorage.setItem('ielts_hub_students_v2', JSON.stringify(state.students));
+      // Tự động lưu ngầm danh sách học sinh lên Google Drive
+      pushStudentsToCloud(false);
+    }
+
+    // ==================== ĐỒNG BỘ DANH SÁCH HỌC VIÊN QUA GOOGLE DRIVE ====================
+    async function pushStudentsToCloud(showAlert = false) {
+      if (!state.gasWebhookUrl) {
+        if (showAlert) alert('Vui lòng dán Google Apps Script URL trước!');
+        return;
+      }
+      try {
+        await fetch(state.gasWebhookUrl, {
+          method: 'POST', mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'saveStudents', students: state.students })
+        });
+        if (showAlert) alert('✅ Đã lưu toàn bộ danh sách học sinh lên Google Drive! Bạn có thể mở trên điện thoại và bấm tải về.');
+      } catch (e) {
+        if (showAlert) alert('❌ Lỗi khi lưu lên Google Drive.');
+      }
+    }
+
+    async function syncStudentsFromCloud(showAlert = false) {
+      if (!state.gasWebhookUrl) {
+        if (showAlert) {
+          alert('⚠️ Hãy dán Google Apps Script Web App URL vào mục Cài đặt (⚙️) để tải dữ liệu từ tài khoản Google của bạn!');
+          openSettingsModal();
+        }
+        return;
+      }
+      setSyncBadge('SYNCING');
+      try {
+        const res = await fetch(`${state.gasWebhookUrl}?action=getStudents&t=${Date.now()}`);
+        const cloudStudents = await res.json();
+        if (Array.isArray(cloudStudents) && cloudStudents.length > 0) {
+          state.students = cloudStudents;
+          state.activeStudentId = state.students[0]?.id || null;
+          localStorage.setItem('ielts_hub_students_v2', JSON.stringify(state.students));
+          renderAll();
+          setSyncBadge('SAVED');
+          if (showAlert) alert(`✅ Đã tải thành công ${cloudStudents.length} học viên từ tài khoản Google Drive của bạn!`);
+        } else if (showAlert) {
+          alert('ℹ️ Trên Google Drive chưa có dữ liệu học viên nào được lưu. Hãy bấm nút "Lưu danh sách học sinh lên Google Drive" trên máy tính trước nhé!');
+        }
+      } catch (e) {
+        setSyncBadge('ERROR');
+        if (showAlert) alert('⚠️ Chưa tải được từ Google Drive. Hãy đảm bảo bạn đã cập nhật mã Apps Script mới nhất!');
+      }
     }
 
     function getActiveStudent() {
       return state.students.find(s => s.id === state.activeStudentId);
     }
 
+    // Đồng hồ 24h chuẩn GMT+7 (Tuyệt đối không có SA/CH)
     function updateClockGMT7() {
       const now = new Date();
-      const fmt = new Intl.DateTimeFormat('vi-VN', {
+      const fmt = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Ho_Chi_Minh',
-        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
+        hour12: false
       }).format(now);
-      document.getElementById('clockGMT7').innerText = `GMT+7: ${fmt}`;
+      document.getElementById('clockGMT7').innerText = `GMT+7 • ${fmt}`;
       renderPrepReminders();
     }
 
+    // ==================== BÓC TÁCH NGÀY THÁNG TỪ CHỮ "Buổi X (DD/MM)" ĐỂ SẮP XẾP TRẠM ĐIỀU PHỐI ====================
+    function getLessonTimestampForSort(student, lesson) {
+      const timeStr = (student.defaultTime && /^\d{2}:\d{2}$/.test(student.defaultTime)) ? student.defaultTime : '19:30';
+
+      // 1. Nếu buổi học đã được gán startTime cụ thể (YYYY-MM-DDTHH:mm)
+      if (lesson.startTime && lesson.startTime.includes('T')) {
+        const t = new Date(lesson.startTime).getTime();
+        if (!isNaN(t)) return t;
+      }
+
+      // 2. Bóc tách ngày (DD/MM) hoặc (DD/MM/YYYY) ngay trong cột A: "Buổi 9 (16/10)"
+      const match = String(lesson.buoi || '').match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+      if (match) {
+        const dd = String(match[1]).padStart(2, '0');
+        const mm = String(match[2]).padStart(2, '0');
+        let yyyy = match[3] ? Number(match[3]) : new Date().getFullYear();
+        if (yyyy < 100) yyyy += 2000;
+        const parsed = new Date(`${yyyy}-${mm}-${dd}T${timeStr}`);
+        if (!isNaN(parsed.getTime())) return parsed.getTime();
+      }
+
+      // 3. Nếu chưa có ngày trên Sheet, xếp xuống dưới theo thứ tự buổi
+      return 9999999999999 + (Number(lesson.rowIndex) || 0);
+    }
+
+    function format24hFromTimestamp(ts, fallbackTime) {
+      if (ts >= 9999999999999) return `Chưa ghi ngày • Ca ${fallbackTime || '19:30'}`;
+      const d = new Date(ts);
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())} ngày ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+    }
+
+    // ==================== TRẠM ĐIỀU PHỐI CHUNG (GOM & XẾP THEO THỨ TỰ NGÀY CỦA TẤT CẢ HỌC VIÊN) ====================
+    function renderPrepReminders() {
+      const container = document.getElementById('prepReminderList');
+      let alerts = [];
+
+      // Lấy các buổi sắp tới của TẤT CẢ học viên và sắp xếp chung theo ngày gần nhất
+      state.students.forEach(stu => {
+        // Chỉ lấy tối đa 2 buổi chưa dạy gần nhất của mỗi học viên để không bị 1 người chiếm hết bảng, sau đó sort chung theo ngày
+        const upcomingOfStu = (stu.lessons || []).filter(l => !l.tienDo);
+        upcomingOfStu.forEach(l => {
+          const sortTs = getLessonTimestampForSort(stu, l);
+          alerts.push({ stu, l, sortTs });
+        });
+      });
+
+      if (alerts.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 italic p-2">Không có ca dạy nào cần chuẩn bị.</div>`;
+        return;
+      }
+
+      // Sắp xếp chung toàn bộ học viên theo mốc ngày giờ từ gần nhất đến xa nhất
+      alerts.sort((a, b) => a.sortTs - b.sortTs);
+
+      container.innerHTML = alerts.slice(0, 15).map(item => {
+        const { stu, l, sortTs } = item;
+        const remindMins = l.prepReminderMins || 45;
+        let timeBadge = '';
+
+        if (sortTs < 9999999999999) {
+          const prepDate = new Date(sortTs - remindMins * 60000);
+          const pad = n => String(n).padStart(2, '0');
+          timeBadge = `Soạn lúc ${pad(prepDate.getHours())}:${pad(prepDate.getMinutes())} • Dạy ${format24hFromTimestamp(sortTs, stu.defaultTime)}`;
+        } else {
+          timeBadge = `Nhắc trước ${remindMins}p • Ca ${stu.defaultTime || '19:30'}`;
+        }
+
+        const dot = l.prepStatus === 'READY' ? '🟢' : (l.prepStatus === 'PREPARING' ? '🟡' : '🔴');
+
+        return `
+          <div onclick="selectStudent('${stu.id}'); openSplitPanel(${l.rowIndex}); toggleMobileSidebar(false);" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 cursor-pointer transition">
+            <div class="flex justify-between items-center text-[11px] font-bold text-white gap-1">
+              <span class="truncate">${dot} ${escapeHtml(stu.name)}</span>
+              <span class="text-amber-400 shrink-0">${escapeHtml(l.buoi.replace(/\n/g, ' '))}</span>
+            </div>
+            <div class="text-[11px] text-slate-300 truncate mt-0.5">${escapeHtml((l.noiDung || '').split('\n')[0])}</div>
+            <div class="text-[10px] text-emerald-400 font-mono mt-1 flex items-center gap-1">
+              <i class="fa-regular fa-clock"></i> ${timeBadge}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // ==================== HIỂN THỊ DẠNG BẢNG (GRID) & DẠNG THẺ (CARDS) ====================
+    function renderMainWorkspace() {
+      const container = document.getElementById('mainContentArea');
+      const stu = getActiveStudent();
+
+      if (!stu) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-xl mx-auto mt-8 shadow-sm">
+            <h3 class="text-base font-bold text-slate-800 mb-2">Chưa có học viên nào</h3>
+            <p class="text-xs text-slate-500 mb-4">Bạn có thể mở lớp mới hoặc tải danh sách học viên từ Google Drive về máy.</p>
+            <div class="flex justify-center gap-2 flex-wrap">
+              <button onclick="openAddStudentModal()" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">+ Mở Lớp Mới</button>
+              <button onclick="syncStudentsFromCloud(true)" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold"><i class="fa-solid fa-cloud-arrow-down mr-1"></i> Tải Học Viên Từ Google Drive</button>
+            </div>
+          </div>`;
+        return;
+      }
+
+      const lessons = getFilteredLessons();
+      if (lessons.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+            <p class="text-sm mb-3 text-slate-600">Không có buổi học nào trong bộ lọc này.</p>
+            <div class="flex justify-center gap-2">
+              <button onclick="syncFromGoogleSheet(true)" class="px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold">Đọc lại từ Sheet</button>
+              <button onclick="addSingleNewLesson()" class="px-3.5 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold">+ Thêm 1 buổi mới</button>
+            </div>
+          </div>`;
+        return;
+      }
+
+      const hasHwLink = stu.hwDocsUrl && stu.hwDocsUrl !== '#';
+
+      // 1. CHẾ ĐỘ DẠNG THẺ (CARDS) - ĐÃ FIX HOÀN CHỈNH
+      if (state.viewMode === 'CARDS') {
+        let cardsHtml = lessons.map(l => `
+          <div class="bg-white rounded-2xl border ${l.tienDo ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'} p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2.5">
+                <div>
+                  <span class="font-bold text-sm text-blue-900">${escapeHtml(l.buoi.replace(/\n/g, ' '))}</span>
+                  <p class="text-[11px] text-slate-500 font-medium mt-0.5">${escapeHtml(l.giaiDoan)}</p>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  ${getPrepBadgeHtml(l.prepStatus)}
+                  <button onclick="openSplitPanel(${l.rowIndex})" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition">
+                    <i class="fa-solid fa-pen-to-square mr-1"></i> Soạn bài
+                  </button>
+                </div>
+              </div>
+
+              <div class="text-xs text-slate-800 whitespace-pre-line bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2.5 leading-relaxed">${escapeHtml(l.noiDung || 'Chưa có nội dung')}</div>
+              
+              <div class="text-xs text-slate-700 whitespace-pre-line mb-2 bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
+                <div class="flex items-center justify-between mb-1">
+                  <b class="text-purple-900">📌 Bài tập về nhà:</b>
+                  ${hasHwLink ? `<a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a>` : ''}
+                </div>
+                ${escapeHtml(l.btvn || 'Chưa giao BTVN')}
+              </div>
+
+              ${l.script ? `<div class="text-xs text-blue-900 bg-blue-50 p-2.5 rounded-xl border border-blue-200 whitespace-pre-line mb-2"><b>📋 Kịch bản lên lớp:</b>\n${escapeHtml(l.script)}</div>` : ''}
+              ${l.nhanXet ? `<div class="text-xs text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-200 whitespace-pre-line"><b>💬 Nhận xét:</b>\n${escapeHtml(l.nhanXet)}</div>` : ''}
+            </div>
+
+            <div class="pt-3 mt-3 border-t border-slate-200 flex items-center justify-between text-xs">
+              <label class="flex items-center gap-1.5 font-semibold ${l.tienDo ? 'text-emerald-700' : 'text-slate-600'} cursor-pointer">
+                <input type="checkbox" ${l.tienDo ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'tienDo', this.checked)" class="w-4 h-4 accent-emerald-600 rounded">
+                Đã dạy xong
+              </label>
+              <label class="flex items-center gap-1.5 font-semibold text-slate-600 cursor-pointer">
+                <input type="checkbox" ${l.hocPhi ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'hocPhi', this.checked)" class="w-4 h-4 accent-blue-600 rounded">
+                Học phí
+              </label>
+            </div>
+          </div>
+        `).join('');
+
+        container.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${cardsHtml}</div>
+          <div class="mt-4 flex justify-center gap-2">
+            <button onclick="addSingleNewLesson()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold shadow">
+              <i class="fa-solid fa-plus mr-1"></i> Thêm 1 buổi học mới (Buổi ${stu.lessons.length + 1})
+            </button>
+            <button onclick="openAutoScheduleModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow">
+              <i class="fa-solid fa-calendar-plus mr-1"></i> Cộng thêm nhiều buổi
+            </button>
+          </div>`;
+        return;
+      }
+
+      // 2. CHẾ ĐỘ DẠNG BẢNG (GRID) - ĐÃ TÁCH RIÊNG CỘT SOẠN BÀI KHỎI CỘT HỌC PHÍ & CHO PHÉP KÉO DÃN CỘT
+      let rowsHtml = lessons.map(l => {
+        const isSelected = state.selectedRowIndex === l.rowIndex;
+        return `
+          <tr class="border-b border-slate-200 hover:bg-blue-50/40 ${l.tienDo ? 'bg-slate-50/70' : 'bg-white'} ${isSelected ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/50' : ''}">
+            <!-- Cột A: Buổi & Trạng thái giáo án -->
+            <td class="p-3 align-top text-center font-bold text-blue-900 border-r border-slate-200">
+              <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'buoi', this.innerText)" class="inline-edit p-1 whitespace-pre-line">${escapeHtml(l.buoi)}</div>
+              <div class="mt-1.5">${getPrepBadgeHtml(l.prepStatus)}</div>
+            </td>
+
+            <!-- Cột Riêng: Nút Soạn Bài (Tách hoàn toàn khỏi cột Học phí) -->
+            <td class="p-3 align-middle text-center border-r border-slate-200">
+              <button onclick="openSplitPanel(${l.rowIndex})" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition inline-flex items-center gap-1.5">
+                <i class="fa-solid fa-pen-to-square"></i> Soạn bài
+              </button>
+            </td>
+
+            <!-- Cột B: Giai đoạn -->
+            <td class="p-3 align-top text-xs border-r border-slate-200">
+              <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'giaiDoan', this.innerText)" class="inline-edit p-1 font-medium">${escapeHtml(l.giaiDoan)}</div>
+            </td>
+
+            <!-- Cột C: Nội dung -->
+            <td class="p-3 align-top text-xs border-r border-slate-200">
+              <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'noiDung', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.noiDung)}</div>
+              ${l.script ? `<div onclick="openSplitPanel(${l.rowIndex})" class="mt-2 p-2 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-900 cursor-pointer"><i class="fa-solid fa-clipboard-list mr-1"></i><b>Kịch bản:</b> ${escapeHtml(l.script)}</div>` : ''}
+            </td>
+
+            <!-- Cột D: BTVN -->
+            <td class="p-3 align-top text-xs border-r border-slate-200">
+              <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'btvn', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.btvn)}</div>
+              ${hasHwLink ? `<div class="mt-1.5 pt-1 border-t border-slate-100 text-right"><a href="${escapeHtml(stu.hwDocsUrl)}" target="_blank" class="text-[11px] text-purple-600 hover:underline font-semibold">Mở Docs BTVN ↗</a></div>` : ''}
+            </td>
+
+            <!-- Cột E: Tiến độ -->
+            <td class="p-3 align-middle text-center border-r border-slate-200">
+              <input type="checkbox" ${l.tienDo ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'tienDo', this.checked)" class="w-5 h-5 accent-slate-800 rounded cursor-pointer">
+            </td>
+
+            <!-- Cột F: Nhận xét -->
+            <td class="p-3 align-top text-xs border-r border-slate-200">
+              <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'nhanXet', this.innerText)" class="inline-edit p-1 whitespace-pre-line leading-relaxed">${escapeHtml(l.nhanXet)}</div>
+            </td>
+
+            <!-- Cột G: Học phí (Độc lập hoàn toàn) -->
+            <td class="p-3 align-middle text-center">
+              <input type="checkbox" ${l.hocPhi ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'hocPhi', this.checked)" class="w-5 h-5 accent-blue-600 rounded cursor-pointer" title="Cột G: Học phí">
+            </td>
+          </tr>`;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm border border-slate-300 overflow-x-auto">
+          <table id="lessonGridTable" class="w-full border-collapse text-left min-w-[900px]">
+            <thead>
+              <tr class="bg-[#1b365d] text-white text-xs font-bold">
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-28">Buổi (A)<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-28">Giáo án<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-40">Giai đoạn (B)<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-80">Nội dung bài học (C)<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-64">BTVN (D)<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-20">Tiến độ (E)<div class="col-resizer"></div></th>
+                <th class="resizable-th p-3 border-r border-slate-600 text-center w-64">Nhận xét (F)<div class="col-resizer"></div></th>
+                <th class="p-3 text-center w-20">Học phí (G)</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div class="mt-3 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
+          <span>💡 <b>Mẹo:</b> Bạn có thể kéo dãn vạch ngăn cách trên tiêu đề bảng hoặc thanh ngăn cách 2 bên để chỉnh kích thước tùy ý.</span>
+          <div class="flex gap-2">
+            <button onclick="addSingleNewLesson()" class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold">
+              <i class="fa-solid fa-plus mr-1"></i> Thêm 1 buổi tiếp theo (Buổi ${stu.lessons.length + 1})
+            </button>
+            <button onclick="openAutoScheduleModal()" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
+              <i class="fa-solid fa-calendar-plus mr-1"></i> Cộng thêm nhiều buổi
+            </button>
+          </div>
+        </div>`;
+
+      initTableColumnResizers();
+    }
+
+    // ==================== KÉO DÃN CÁC KHUNG (RESIZABLE PANELS & TABLE COLUMNS) ====================
+    function initResizablePanels() {
+      // 1. Kéo dãn Sidebar Trái
+      const leftGutter = document.getElementById('leftGutter');
+      const leftSidebar = document.getElementById('leftSidebar');
+      let isResizingLeft = false;
+
+      leftGutter.addEventListener('mousedown', () => {
+        isResizingLeft = true;
+        leftGutter.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+      });
+
+      // 2. Kéo dãn Khung Soạn bài bên phải
+      const rightGutter = document.getElementById('rightGutter');
+      const splitPanel = document.getElementById('splitViewPanel');
+      let isResizingRight = false;
+
+      rightGutter.addEventListener('mousedown', () => {
+        isResizingRight = true;
+        rightGutter.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+      });
+
+      // 3. Kéo dãn chiều dọc giữa Danh sách học sinh và Trạm điều phối
+      const vertResizer = document.getElementById('sidebarVerticalResizer');
+      const stuBox = document.getElementById('sidebarStudentsBox');
+      let isResizingVert = false;
+
+      vertResizer.addEventListener('mousedown', () => {
+        isResizingVert = true;
+        document.body.style.cursor = 'row-resize';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (isResizingLeft) {
+          const newW = Math.min(Math.max(e.clientX, 240), 520);
+          leftSidebar.style.width = newW + 'px';
+        }
+        if (isResizingRight) {
+          const newW = Math.min(Math.max(window.innerWidth - e.clientX, 320), 850);
+          splitPanel.style.width = newW + 'px';
+        }
+        if (isResizingVert) {
+          const rect = leftSidebar.getBoundingClientRect();
+          const newH = Math.min(Math.max(e.clientY - rect.top - 60, 120), rect.height - 180);
+          stuBox.style.height = newH + 'px';
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isResizingLeft || isResizingRight || isResizingVert) {
+          isResizingLeft = false;
+          isResizingRight = false;
+          isResizingVert = false;
+          leftGutter.classList.remove('active');
+          rightGutter.classList.remove('active');
+          document.body.style.cursor = '';
+        }
+      });
+    }
+
+    function initTableColumnResizers() {
+      const ths = document.querySelectorAll('#lessonGridTable th.resizable-th');
+      ths.forEach(th => {
+        const resizer = th.querySelector('.col-resizer');
+        if (!resizer) return;
+        let startX = 0, startW = 0;
+
+        const onMouseMove = (e) => {
+          const newW = Math.max(60, startW + (e.clientX - startX));
+          th.style.width = newW + 'px';
+          th.style.minWidth = newW + 'px';
+        };
+        const onMouseUp = () => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        };
+        resizer.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+          startX = e.clientX;
+          startW = th.offsetWidth;
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        });
+      });
+    }
+
+    function toggleMobileSidebar(show) {
+      const sb = document.getElementById('leftSidebar');
+      const ov = document.getElementById('mobileOverlay');
+      if (show) {
+        sb.classList.remove('-translate-x-full');
+        ov.classList.remove('hidden');
+      } else {
+        sb.classList.add('-translate-x-full');
+        ov.classList.add('hidden');
+      }
+    }
+
+    // ==================== ĐỒNG BỘ GOOGLE SHEETS ====================
     function parseGoogleSheetUrl(url) {
       if (!url) return null;
       const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -520,6 +1037,16 @@
       if (!parsedUrl) return;
 
       setSyncBadge('SYNCING');
+      const oldMetaMap = {};
+      (stu.lessons || []).forEach(l => {
+        oldMetaMap[l.rowIndex] = {
+          startTime: l.startTime || '',
+          prepReminderMins: l.prepReminderMins || 45,
+          prepStatus: l.prepStatus,
+          script: l.script || ''
+        };
+      });
+
       let fetchedRows = null;
 
       if (state.gasWebhookUrl) {
@@ -541,19 +1068,24 @@
       }
 
       if (fetchedRows) {
-        stu.lessons = fetchedRows.map(r => ({
-          rowIndex: r.rowIndex,
-          buoi: r.buoi || '',
-          giaiDoan: r.giaiDoan || '',
-          noiDung: r.noiDung || '',
-          btvn: r.btvn || '',
-          tienDo: r.tienDo === true || String(r.tienDo).toUpperCase() === 'TRUE',
-          nhanXet: r.nhanXet || '',
-          hocPhi: r.hocPhi === true || String(r.hocPhi).toUpperCase() === 'TRUE',
-          startTime: '', prepReminderMins: 45,
-          prepStatus: (r.tienDo === true || String(r.tienDo).toUpperCase() === 'TRUE') ? 'READY' : 'UNPREPARED',
-          script: ''
-        }));
+        stu.lessons = fetchedRows.map(r => {
+          const isDone = r.tienDo === true || String(r.tienDo).toUpperCase() === 'TRUE';
+          const oldMeta = oldMetaMap[r.rowIndex] || {};
+          return {
+            rowIndex: r.rowIndex,
+            buoi: r.buoi || '',
+            giaiDoan: r.giaiDoan || '',
+            noiDung: r.noiDung || '',
+            btvn: r.btvn || '',
+            tienDo: isDone,
+            nhanXet: r.nhanXet || '',
+            hocPhi: r.hocPhi === true || String(r.hocPhi).toUpperCase() === 'TRUE',
+            startTime: oldMeta.startTime || '',
+            prepReminderMins: oldMeta.prepReminderMins || 45,
+            prepStatus: isDone ? 'READY' : (oldMeta.prepStatus || 'UNPREPARED'),
+            script: oldMeta.script || ''
+          };
+        });
         saveToLocal();
         renderAll();
         setSyncBadge('SAVED');
@@ -561,7 +1093,6 @@
       }
     }
 
-    // NÚT 2: ĐẨY TOÀN BỘ TỪ WEB LÊN SHEET
     async function pushAllWebToGoogleSheet() {
       const stu = getActiveStudent();
       if (!stu || !stu.sheetUrl) return;
@@ -611,6 +1142,7 @@
       } catch (e) {}
     }
 
+    // ==================== QUẢN LÝ HỌC VIÊN & BUỔI HỌC ====================
     function deleteStudent(studentId, event) {
       if (event) event.stopPropagation();
       const stu = state.students.find(s => s.id === studentId);
@@ -626,6 +1158,7 @@
       const stu = getActiveStudent();
       if (!stu) return;
       document.getElementById('editStudentName').value = stu.name || '';
+      document.getElementById('editStudentTime24').value = stu.defaultTime || '19:30';
       document.getElementById('editStudentSheetUrl').value = stu.sheetUrl || '';
       document.getElementById('editStudentDocsUrl').value = stu.docsUrl !== '#' ? stu.docsUrl : '';
       document.getElementById('editStudentHwDocsUrl').value = stu.hwDocsUrl !== '#' ? stu.hwDocsUrl : '';
@@ -637,6 +1170,7 @@
       const stu = getActiveStudent();
       if (!stu) return;
       stu.name = document.getElementById('editStudentName').value.trim();
+      stu.defaultTime = document.getElementById('editStudentTime24').value || '19:30';
       stu.sheetUrl = document.getElementById('editStudentSheetUrl').value.trim();
       stu.docsUrl = document.getElementById('editStudentDocsUrl').value.trim() || '#';
       stu.hwDocsUrl = document.getElementById('editStudentHwDocsUrl').value.trim() || '#';
@@ -653,12 +1187,12 @@
       container.innerHTML = state.students.length === 0 ? `<div class="text-xs text-slate-400 italic p-4 text-center border border-dashed border-slate-700 rounded-xl">Chưa có học viên.</div>` : '';
       state.students.forEach(stu => {
         const isActive = stu.id === state.activeStudentId;
-        const done = stu.lessons.filter(l => l.tienDo).length;
+        const done = (stu.lessons || []).filter(l => l.tienDo).length;
         container.innerHTML += `
-          <div onclick="selectStudent('${stu.id}')" class="group p-2.5 rounded-xl cursor-pointer transition flex items-center justify-between ${isActive ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}">
+          <div onclick="selectStudent('${stu.id}'); toggleMobileSidebar(false);" class="group p-2.5 rounded-xl cursor-pointer transition flex items-center justify-between ${isActive ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}">
             <div class="truncate pr-2">
               <div class="font-semibold text-xs truncate">${escapeHtml(stu.name)}</div>
-              <div class="text-[11px] ${isActive ? 'text-blue-100' : 'text-slate-400'}">Đã dạy: ${done}/${stu.lessons.length}</div>
+              <div class="text-[11px] ${isActive ? 'text-blue-100' : 'text-slate-400'}">Đã dạy: ${done}/${(stu.lessons || []).length} buổi • Ca ${stu.defaultTime || '19:30'}</div>
             </div>
             <button onclick="deleteStudent('${stu.id}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-600 text-white"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
           </div>`;
@@ -672,7 +1206,7 @@
 
       if (!stu) {
         document.getElementById('currentStudentName').innerText = 'Chưa có học viên nào';
-        document.getElementById('currentStudentSchedule').innerText = 'Hãy bấm "+ Mở lớp" để bắt đầu.';
+        document.getElementById('currentStudentSchedule').innerText = 'Hãy bấm "+ Mở lớp" hoặc tải danh sách học viên từ Google Drive.';
         actionBtns.classList.add('hidden'); badge.classList.add('hidden');
         ['ALL', 'UPCOMING', 'UNPREPARED', 'COMPLETED'].forEach(f => document.getElementById(`count-${f}`).innerText = '0');
         return;
@@ -681,6 +1215,10 @@
       actionBtns.classList.remove('hidden'); actionBtns.classList.add('flex');
       badge.classList.remove('hidden'); badge.classList.add('flex');
       document.getElementById('currentStudentName').innerText = stu.name;
+      const dayNames = {1:'T2', 2:'T3', 3:'T4', 4:'T5', 5:'T6', 6:'T7', 0:'CN'};
+      const daysText = (stu.daysOfWeek || []).map(d => dayNames[d] || `T${d}`).join(', ');
+      document.getElementById('currentStudentSchedule').innerText = `Lịch: ${daysText || 'Linh hoạt'} lúc ${stu.defaultTime || '19:30'} (24h) • Tổng ${stu.lessons.length} buổi`;
+
       document.getElementById('headerSheetBtn').href = stu.sheetUrl || '#';
       document.getElementById('headerDocsBtn').href = stu.docsUrl || '#';
       document.getElementById('headerHwDocsBtn').href = stu.hwDocsUrl || '#';
@@ -691,8 +1229,18 @@
       document.getElementById('count-COMPLETED').innerText = stu.lessons.filter(l => l.tienDo).length;
 
       ['ALL', 'UPCOMING', 'UNPREPARED', 'COMPLETED'].forEach(f => {
-        document.getElementById(`filter-${f}`).className = state.filter === f ? "filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white shadow-sm" : "filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100";
+        document.getElementById(`filter-${f}`).className = state.filter === f
+          ? "filter-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-white shadow-sm"
+          : "filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-100";
       });
+
+      // Cập nhật màu nút chế độ xem Bảng / Thẻ
+      document.getElementById('view-GRID').className = state.viewMode === 'GRID'
+        ? "px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white flex items-center gap-1.5 transition"
+        : "px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition";
+      document.getElementById('view-CARDS').className = state.viewMode === 'CARDS'
+        ? "px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white flex items-center gap-1.5 transition"
+        : "px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition";
     }
 
     function getFilteredLessons() {
@@ -710,65 +1258,6 @@
       if (status === 'READY') return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">🟢 Đã sẵn sàng</span>`;
       if (status === 'PREPARING') return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">🟡 Đang soạn</span>`;
       return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">🔴 Chưa soạn</span>`;
-    }
-
-    function renderMainWorkspace() {
-      const container = document.getElementById('mainContentArea');
-      const stu = getActiveStudent();
-      if (!stu) {
-        container.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-xl mx-auto mt-10 shadow-sm"><h3 class="text-base font-bold text-slate-800 mb-1">Chưa chọn học viên nào</h3><button onclick="openAddStudentModal()" class="mt-3 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold">+ Mở Lớp Mới</button></div>`;
-        return;
-      }
-      const lessons = getFilteredLessons();
-      if (lessons.length === 0) {
-        container.innerHTML = `<div class="bg-white rounded-2xl border border-slate-200 p-12 text-center"><p class="text-sm mb-3">Không có buổi học nào.</p><button onclick="syncFromGoogleSheet(true)" class="px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold">Đọc lại từ Sheet</button></div>`;
-        return;
-      }
-
-      let rowsHtml = lessons.map(l => `
-        <tr class="border-b border-slate-200 hover:bg-blue-50/40 ${l.tienDo ? 'bg-slate-50/70' : 'bg-white'}">
-          <td class="p-3 align-top text-center font-bold text-blue-900 border-r w-28 cursor-pointer" onclick="openSplitPanel(${l.rowIndex})">
-            <div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'buoi', this.innerText)" class="inline-edit p-1">${escapeHtml(l.buoi)}</div>
-            <div class="mt-1.5">${getPrepBadgeHtml(l.prepStatus)}</div>
-          </td>
-          <td class="p-3 align-top text-xs border-r w-40"><div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'giaiDoan', this.innerText)" class="inline-edit p-1">${escapeHtml(l.giaiDoan)}</div></td>
-          <td class="p-3 align-top text-xs border-r min-w-[280px]"><div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'noiDung', this.innerText)" class="inline-edit p-1 whitespace-pre-line">${escapeHtml(l.noiDung)}</div></td>
-          <td class="p-3 align-top text-xs border-r w-64"><div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'btvn', this.innerText)" class="inline-edit p-1 whitespace-pre-line">${escapeHtml(l.btvn)}</div></td>
-          <td class="p-3 align-middle text-center border-r w-20"><input type="checkbox" ${l.tienDo ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'tienDo', this.checked)" class="w-5 h-5 accent-slate-800 rounded"></td>
-          <td class="p-3 align-top text-xs border-r w-64"><div contenteditable="true" onblur="inlineUpdate(${l.rowIndex}, 'nhanXet', this.innerText)" class="inline-edit p-1 whitespace-pre-line">${escapeHtml(l.nhanXet)}</div></td>
-          <td class="p-3 align-middle text-center w-28">
-            <div class="flex flex-col items-center gap-2">
-              <input type="checkbox" ${l.hocPhi ? 'checked' : ''} onchange="inlineUpdate(${l.rowIndex}, 'hocPhi', this.checked)" class="w-5 h-5 accent-slate-800 rounded">
-              <button onclick="openSplitPanel(${l.rowIndex})" class="text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white">Soạn bài</button>
-            </div>
-          </td>
-        </tr>`).join('');
-
-      container.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-slate-300 overflow-x-auto">
-          <table class="w-full border-collapse text-left">
-            <thead>
-              <tr class="bg-[#1b365d] text-white text-xs font-bold">
-                <th class="p-3 border-r text-center">Buổi</th><th class="p-3 border-r text-center">Giai đoạn</th>
-                <th class="p-3 border-r text-center">Nội dung</th><th class="p-3 border-r text-center">BTVN</th>
-                <th class="p-3 border-r text-center">Tiến độ</th><th class="p-3 border-r text-center">Nhận xét</th><th class="p-3 text-center">Học phí</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>`;
-    }
-
-    function renderPrepReminders() {
-      const container = document.getElementById('prepReminderList');
-      let alerts = [];
-      state.students.forEach(stu => stu.lessons.forEach(l => { if (!l.tienDo) alerts.push({ stu, l }); }));
-      if (alerts.length === 0) { container.innerHTML = `<div class="text-xs text-slate-500 italic p-2">Không có ca dạy nào.</div>`; return; }
-      container.innerHTML = alerts.slice(0, 6).map(item => `
-        <div onclick="selectStudent('${item.stu.id}'); openSplitPanel(${item.l.rowIndex})" class="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 cursor-pointer">
-          <div class="flex justify-between text-[11px] font-bold text-white"><span>${escapeHtml(item.stu.name)}</span><span class="text-amber-400">${escapeHtml(item.l.buoi)}</span></div>
-          <div class="text-[11px] text-slate-300 truncate">${escapeHtml(item.l.noiDung)}</div>
-        </div>`).join('');
     }
 
     function inlineUpdate(rowIndex, field, value) {
@@ -789,12 +1278,25 @@
       if (!lesson) return;
       state.selectedRowIndex = rowIndex;
       document.getElementById('splitViewPanel').classList.remove('hidden');
+      document.getElementById('rightGutter').classList.remove('hidden');
       document.getElementById('panelQuickDocsLink').href = stu.docsUrl || '#';
       document.getElementById('panelQuickHwDocsLink').href = stu.hwDocsUrl || '#';
       document.getElementById('panelBtvnOpenLink').href = stu.hwDocsUrl || '#';
       
+      document.getElementById('panelLessonBadge').innerText = `Dòng ${lesson.rowIndex} • ${lesson.buoi.replace(/\n/g, ' ')}`;
       document.getElementById('panelPrepStatus').value = lesson.prepStatus || 'UNPREPARED';
-      document.getElementById('panelStartTime').value = lesson.startTime || '';
+
+      // Tách ngày và giờ 24h từ startTime
+      let datePart = '', timePart = stu.defaultTime || '19:30';
+      if (lesson.startTime && lesson.startTime.includes('T')) {
+        const parts = lesson.startTime.split('T');
+        datePart = parts[0];
+        timePart = parts[1].substring(0, 5);
+      }
+      document.getElementById('panelStartDate').value = datePart;
+      document.getElementById('panelStartHour24').value = timePart;
+      document.getElementById('panelReminderMins').value = lesson.prepReminderMins || 45;
+
       document.getElementById('panelScript').value = lesson.script || '';
       document.getElementById('panelBuoi').value = lesson.buoi || '';
       document.getElementById('panelGiaiDoan').value = lesson.giaiDoan || '';
@@ -803,6 +1305,7 @@
       document.getElementById('panelNhanXet').value = lesson.nhanXet || '';
       document.getElementById('panelTienDo').checked = !!lesson.tienDo;
       document.getElementById('panelHocPhi').checked = !!lesson.hocPhi;
+      renderMainWorkspace();
     }
 
     function saveFromSplitPanel() {
@@ -810,8 +1313,13 @@
       if (!stu || !state.selectedRowIndex) return;
       const lesson = stu.lessons.find(l => l.rowIndex === state.selectedRowIndex);
       if (!lesson) return;
+
       lesson.prepStatus = document.getElementById('panelPrepStatus').value;
-      lesson.startTime = document.getElementById('panelStartTime').value;
+      const dVal = document.getElementById('panelStartDate').value;
+      const tVal = document.getElementById('panelStartHour24').value || '19:30';
+      lesson.startTime = dVal ? `${dVal}T${tVal}` : '';
+      lesson.prepReminderMins = Number(document.getElementById('panelReminderMins').value);
+
       lesson.script = document.getElementById('panelScript').value;
       lesson.buoi = document.getElementById('panelBuoi').value;
       lesson.giaiDoan = document.getElementById('panelGiaiDoan').value;
@@ -822,10 +1330,115 @@
       lesson.hocPhi = document.getElementById('panelHocPhi').checked;
       saveToLocal();
       pushUpdateToGoogleSheet(stu, lesson);
-      renderAll();
+      renderHeaderAndCounts();
+      renderMainWorkspace();
+      renderPrepReminders();
     }
 
-    function closeSplitPanel() { state.selectedRowIndex = null; document.getElementById('splitViewPanel').classList.add('hidden'); }
+    function closeSplitPanel() {
+      state.selectedRowIndex = null;
+      document.getElementById('splitViewPanel').classList.add('hidden');
+      document.getElementById('rightGutter').classList.add('hidden');
+      renderMainWorkspace();
+    }
+
+    // ==================== THÊM 1 BUỔI HOẶC NHIỀU BUỔI + RẢI LỊCH 24H ====================
+    function addSingleNewLesson() {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      const nextRowIndex = stu.lessons.length > 0 ? Math.max(...stu.lessons.map(l => l.rowIndex)) + 1 : 2;
+      const nextNum = stu.lessons.length + 1;
+      const newLesson = {
+        rowIndex: nextRowIndex,
+        buoi: `Buổi ${nextNum}\n(Chưa xếp)`,
+        giaiDoan: stu.lessons[stu.lessons.length - 1]?.giaiDoan || 'Giai đoạn tiếp theo',
+        noiDung: '',
+        btvn: '',
+        tienDo: false,
+        nhanXet: '',
+        hocPhi: false,
+        startTime: '',
+        prepReminderMins: 45,
+        prepStatus: 'UNPREPARED',
+        script: ''
+      };
+      stu.lessons.push(newLesson);
+      saveToLocal();
+      pushUpdateToGoogleSheet(stu, newLesson);
+      renderAll();
+      openSplitPanel(nextRowIndex);
+    }
+
+    function openAutoScheduleModal() {
+      const stu = getActiveStudent();
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('schedStartDate').value = today;
+      document.getElementById('schedTime24').value = stu?.defaultTime || '19:30';
+      document.getElementById('schedAddMoreCount').value = '0';
+      document.getElementById('autoScheduleModal').classList.remove('hidden');
+    }
+    function closeAutoScheduleModal() { document.getElementById('autoScheduleModal').classList.add('hidden'); }
+
+    function applyAutoSchedule() {
+      const stu = getActiveStudent();
+      if (!stu) return;
+
+      const startDateStr = document.getElementById('schedStartDate').value;
+      const classTime = document.getElementById('schedTime24').value || '19:30';
+      const addMoreCount = parseInt(document.getElementById('schedAddMoreCount').value || '0', 10);
+      const checkedDays = Array.from(document.querySelectorAll('#schedDays input:checked')).map(el => parseInt(el.value, 10));
+
+      if (!startDateStr || checkedDays.length === 0) {
+        alert('Vui lòng chọn ngày bắt đầu và ít nhất 1 thứ học trong tuần!');
+        return;
+      }
+
+      stu.defaultTime = classTime;
+      stu.daysOfWeek = checkedDays;
+
+      // Cộng thêm buổi mới nếu học viên học nhiều hơn 32 buổi
+      for (let i = 0; i < addMoreCount; i++) {
+        const nextRowIndex = stu.lessons.length > 0 ? Math.max(...stu.lessons.map(l => l.rowIndex)) + 1 : 2;
+        const nextLessonNum = stu.lessons.length + 1;
+        stu.lessons.push({
+          rowIndex: nextRowIndex,
+          buoi: `Buổi ${nextLessonNum}`,
+          giaiDoan: stu.lessons[stu.lessons.length - 1]?.giaiDoan || 'Giai đoạn tiếp theo',
+          noiDung: '',
+          btvn: '',
+          tienDo: false,
+          nhanXet: '',
+          hocPhi: false,
+          startTime: '',
+          prepReminderMins: 45,
+          prepStatus: 'UNPREPARED',
+          script: ''
+        });
+      }
+
+      let curDate = new Date(startDateStr + 'T00:00:00');
+      const pad = n => String(n).padStart(2, '0');
+
+      stu.lessons.forEach((lesson, idx) => {
+        if (!lesson.tienDo) {
+          while (!checkedDays.includes(curDate.getDay())) {
+            curDate.setDate(curDate.getDate() + 1);
+          }
+          const dd = pad(curDate.getDate());
+          const mm = pad(curDate.getMonth() + 1);
+          const yyyy = curDate.getFullYear();
+
+          lesson.buoi = `Buổi ${idx + 1}\n(${dd}/${mm})`;
+          lesson.startTime = `${yyyy}-${mm}-${dd}T${classTime}`;
+          curDate.setDate(curDate.getDate() + 1);
+        }
+      });
+
+      saveToLocal();
+      pushAllWebToGoogleSheet();
+      closeAutoScheduleModal();
+      renderAll();
+    }
 
     function openAddStudentModal() {
       document.getElementById('newStudentName').value = '';
@@ -841,12 +1454,16 @@
       const sheetUrl = document.getElementById('newStudentSheetUrl').value.trim();
       const docsUrl = document.getElementById('newStudentDocsUrl').value.trim();
       const hwDocsUrl = document.getElementById('newStudentHwDocsUrl').value.trim();
+      const defaultTime = document.getElementById('newStudentTime24').value || '19:30';
+      const daysOfWeek = Array.from(document.querySelectorAll('#newStudentDays input:checked')).map(el => parseInt(el.value, 10));
       const initMode = document.getElementById('newStudentInitMode').value;
+
       if (!name || !sheetUrl) { alert('Vui lòng điền Tên và Link Sheet!'); return; }
 
       const newStu = {
         id: 'stu_' + Date.now(), name, sheetUrl,
-        docsUrl: docsUrl || '#', hwDocsUrl: hwDocsUrl || '#', lessons: []
+        docsUrl: docsUrl || '#', hwDocsUrl: hwDocsUrl || '#',
+        defaultTime, daysOfWeek, lessons: []
       };
       state.students.push(newStu);
       state.activeStudentId = newStu.id;
@@ -857,7 +1474,9 @@
     function setSyncBadge(status) {
       const badge = document.getElementById('syncBadge');
       badge.classList.remove('hidden'); badge.classList.add('flex');
-      badge.innerHTML = status === 'SYNCING' ? `<i class="fa-solid fa-spinner fa-spin"></i> Đang đồng bộ...` : `<i class="fa-solid fa-check-circle"></i> Đã đồng bộ`;
+      badge.innerHTML = status === 'SYNCING'
+        ? `<i class="fa-solid fa-spinner fa-spin"></i> Đang đồng bộ...`
+        : `<i class="fa-solid fa-check-circle"></i> Đã đồng bộ`;
     }
 
     function selectStudent(id) { state.activeStudentId = id; closeSplitPanel(); renderAll(); }
@@ -865,10 +1484,15 @@
     function setViewMode(m) { state.viewMode = m; renderAll(); }
     function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
     function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
-    function saveGasSettings() {
+    async function saveGasSettings() {
       state.gasWebhookUrl = document.getElementById('gasWebhookUrl').value.trim();
       localStorage.setItem('ielts_hub_gas_url', state.gasWebhookUrl);
-      closeSettingsModal(); alert('Đã lưu cấu hình!');
+      closeSettingsModal();
+      if (state.students.length > 0) {
+        await pushStudentsToCloud(true);
+      } else {
+        await syncStudentsFromCloud(true);
+      }
     }
     function escapeHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     window.onload = initApp;
