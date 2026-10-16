@@ -55,7 +55,7 @@
   <div id="mobileOverlay" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-slate-900/60 z-30 hidden md:hidden"></div>
 
   <!-- ==================== SIDEBAR TRÁI: QUẢN LÝ LỚP & TRẠM ĐIỀU PHỐI ==================== -->
-  <aside id="leftSidebar" style="width: 310px;" class="fixed md:static inset-y-0 left-0 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-2xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-200 min-w-[220px] max-w-[600px]">
+  <aside id="leftSidebar" style="width: 320px;" class="fixed md:static inset-y-0 left-0 bg-slate-900 text-white flex flex-col h-full shrink-0 shadow-2xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-200 min-w-[230px] max-w-[600px]">
     <!-- Logo & Cài đặt -->
     <div class="p-4 border-b border-slate-800 flex items-center justify-between">
       <div class="flex items-center space-x-2.5">
@@ -68,6 +68,9 @@
         </div>
       </div>
       <div class="flex items-center gap-1">
+        <button onclick="syncAllStudentsSheets(true)" class="text-amber-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Làm mới lịch học từ tất cả các Sheet của mọi học viên">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
         <button onclick="syncStudentsFromCloud(true)" class="text-emerald-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800" title="Tải danh sách học viên từ Google Drive về máy này">
           <i class="fa-solid fa-cloud-arrow-down"></i>
         </button>
@@ -81,7 +84,7 @@
     </div>
 
     <!-- Danh sách Học viên / Lớp học -->
-    <div id="sidebarStudentsBox" style="height: 44%;" class="p-4 border-b border-slate-800 overflow-y-auto custom-scroll flex flex-col min-h-[120px]">
+    <div id="sidebarStudentsBox" style="height: 40%;" class="p-4 border-b border-slate-800 overflow-y-auto custom-scroll flex flex-col min-h-[120px]">
       <div class="flex items-center justify-between mb-3 shrink-0">
         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Danh sách Học viên</span>
         <button onclick="openAddStudentModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded-md font-medium flex items-center gap-1 transition">
@@ -96,9 +99,9 @@
       <div class="w-8 h-0.5 bg-slate-500 rounded"></div>
     </div>
 
-    <!-- TRẠM ĐIỀU PHỐI & NHẮC CHUẨN BỊ GIÁO ÁN -->
+    <!-- TRẠM ĐIỀU PHỐI & NHẮC CHUẨN BỊ GIÁO ÁN (4 CA DẠY GẦN NHẤT CỦA TẤT CẢ HỌC VIÊN) -->
     <div class="p-4 bg-slate-950/90 flex-1 flex flex-col overflow-hidden">
-      <div class="flex items-center justify-between mb-1.5 shrink-0">
+      <div class="flex items-center justify-between mb-1 shrink-0">
         <div class="flex items-center gap-1.5">
           <span class="relative flex h-2.5 w-2.5">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -108,7 +111,10 @@
         </div>
         <span id="clockGMT7" class="text-[11px] text-emerald-400 font-mono font-semibold"></span>
       </div>
-      <p class="text-[11px] text-slate-400 mb-2 shrink-0">Sắp xếp theo thứ tự Buổi (1, 2, 3...):</p>
+      <div class="flex items-center justify-between mb-2 shrink-0">
+        <p class="text-[11px] text-slate-400">Xếp chuẩn theo ngày gần nhất của mọi lớp:</p>
+        <button onclick="syncAllStudentsSheets(true)" class="text-[10px] text-blue-400 hover:underline font-medium">Cập nhật tất cả</button>
+      </div>
       <div id="prepReminderList" class="space-y-2 overflow-y-auto custom-scroll flex-1 pr-1"></div>
     </div>
   </aside>
@@ -539,6 +545,9 @@
 
       if (state.students.length === 0 && state.gasWebhookUrl) {
         await syncStudentsFromCloud(false);
+      } else if (state.students.length > 0) {
+        // Tự động làm mới dữ liệu từ tất cả các Sheet của mọi học viên để Trạm Điều Phối luôn chuẩn xác
+        syncAllStudentsSheets(false);
       }
     }
 
@@ -604,20 +613,132 @@
         hour12: false
       }).format(now);
       document.getElementById('clockGMT7').innerText = `GMT+7 • ${fmt}`;
+      renderPrepReminders();
     }
 
-    // ==================== TRẠM ĐIỀU PHỐI (SẮP XẾP THEO SỐ BUỔI) ====================
+    // ==================== THUẬT TOÁN ĐỌC NGÀY & GIỜ CHUẨN XÁC 100% CHO TẤT CẢ HỌC VIÊN ====================
+    function extractDayMonthFromText(text) {
+      if (!text) return null;
+      const str = String(text);
+      // Ưu tiên 1: Tìm ngày tháng nằm trong ngoặc đơn, ví dụ: Buổi 11 (18/10) hoặc (05/01/2027)
+      let m = str.match(/\(\s*(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})(?:\s*[\/\-\.]\s*(\d{2,4}))?\s*\)/);
+      if (!m) {
+        // Ưu tiên 2: Tìm chuỗi DD/MM bất kỳ trong ô Buổi
+        m = str.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})(?:\s*[\/\-]\s*(\d{2,4}))?/);
+      }
+      if (!m) return null;
+      const dd = parseInt(m[1], 10);
+      const mm = parseInt(m[2], 10);
+      if (dd < 1 || dd > 31 || mm < 1 || mm > 12) return null;
+      let yyyy = m[3] ? parseInt(m[3], 10) : null;
+      if (yyyy !== null && yyyy < 100) yyyy += 2000;
+      return { dd, mm, yyyy };
+    }
+
+    function computeStudentLessonTimestamps(student) {
+      const defaultTimeStr = (student.defaultTime && /^\d{2}:\d{2}$/.test(student.defaultTime)) ? student.defaultTime : '19:30';
+      const now = new Date();
+      let runningYear = now.getFullYear();
+      let prevMonth = null;
+      const resultMap = {};
+
+      // Sắp xếp danh sách buổi theo đúng thứ tự dòng từ trên xuống dưới trên Sheet
+      const sortedLessons = [...(student.lessons || [])].sort((a, b) => (Number(a.rowIndex) || 0) - (Number(b.rowIndex) || 0));
+
+      sortedLessons.forEach(lesson => {
+        // Lấy giờ dạy riêng của buổi (nếu có) hoặc giờ cố định của lớp
+        let timePart = defaultTimeStr;
+        if (lesson.startTime && lesson.startTime.includes('T')) {
+          const tSplit = lesson.startTime.split('T')[1];
+          if (tSplit && /^\d{2}:\d{2}/.test(tSplit)) {
+            timePart = tSplit.substring(0, 5);
+          }
+        }
+
+        // 1. Ưu tiên đọc ngày tháng từ chữ trong Cột A: "Buổi X (DD/MM)" trên Google Sheet
+        const dm = extractDayMonthFromText(lesson.buoi);
+        if (dm) {
+          if (dm.yyyy) {
+            runningYear = dm.yyyy;
+          } else if (prevMonth !== null) {
+            // Nếu buổi trước đang ở cuối năm (tháng 9, 10, 11, 12) mà buổi sau nhảy sang đầu năm (tháng 1, 2, 3, 4) -> Tăng năm lên +1
+            if (prevMonth >= 9 && dm.mm <= 4) {
+              runningYear += 1;
+            }
+          }
+          prevMonth = dm.mm;
+          const pad = n => String(n).padStart(2, '0');
+          const isoStr = `${runningYear}-${pad(dm.mm)}-${pad(dm.dd)}T${timePart}:00+07:00`;
+          const ts = new Date(isoStr).getTime();
+          if (!isNaN(ts)) {
+            resultMap[lesson.rowIndex] = {
+              ts,
+              dateLabel: `${pad(dm.dd)}/${pad(dm.mm)}/${runningYear}`,
+              shortDate: `${pad(dm.dd)}/${pad(dm.mm)}`,
+              timeLabel: timePart
+            };
+            return;
+          }
+        }
+
+        // 2. Nếu trong cột A không ghi (DD/MM), kiểm tra ngày chọn trong startTime
+        if (lesson.startTime && lesson.startTime.includes('T')) {
+          const ts = new Date(lesson.startTime).getTime();
+          if (!isNaN(ts)) {
+            const dObj = new Date(ts);
+            runningYear = dObj.getFullYear();
+            prevMonth = dObj.getMonth() + 1;
+            const pad = n => String(n).padStart(2, '0');
+            resultMap[lesson.rowIndex] = {
+              ts,
+              dateLabel: `${pad(dObj.getDate())}/${pad(dObj.getMonth() + 1)}/${runningYear}`,
+              shortDate: `${pad(dObj.getDate())}/${pad(dObj.getMonth() + 1)}`,
+              timeLabel: `${pad(dObj.getHours())}:${pad(dObj.getMinutes())}`
+            };
+            return;
+          }
+        }
+
+        // 3. Nếu buổi học hoàn toàn chưa có ngày tháng -> Đẩy xuống cuối cùng
+        resultMap[lesson.rowIndex] = {
+          ts: 9999999999999 + (Number(lesson.rowIndex) || 0),
+          dateLabel: 'Chưa xếp ngày',
+          shortDate: '--/--',
+          timeLabel: timePart
+        };
+      });
+
+      return resultMap;
+    }
+
+    // ==================== TRẠM ĐIỀU PHỐI CHUNG: CẬP NHẬT ĐẦY ĐỦ TẤT CẢ CÁC SHEET & LẤY 4 CA GẦN NHẤT ====================
     function renderPrepReminders() {
       const container = document.getElementById('prepReminderList');
       let allUpcoming = [];
 
+      // Mốc 00:00 đầu ngày hôm nay theo giờ Việt Nam
+      const now = new Date();
+      const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime();
+
       state.students.forEach(stu => {
+        const timeMap = computeStudentLessonTimestamps(stu);
         (stu.lessons || []).forEach(l => {
+          // Chỉ lấy các buổi CHƯA DẠY (tienDo === false)
           if (!l.tienDo) {
-            // Lấy số từ "Buổi X", nếu không có thì lấy rowIndex
-            const numMatch = String(l.buoi).match(/\d+/);
-            const buoiNum = numMatch ? parseInt(numMatch[0], 10) : l.rowIndex;
-            allUpcoming.push({ stu, l, buoiNum });
+            const info = timeMap[l.rowIndex] || {
+              ts: 9999999999999,
+              dateLabel: 'Chưa xếp ngày',
+              shortDate: '--/--',
+              timeLabel: stu.defaultTime || '19:30'
+            };
+            allUpcoming.push({
+              stu,
+              l,
+              sortTs: info.ts,
+              dateLabel: info.dateLabel,
+              shortDate: info.shortDate,
+              timeLabel: info.timeLabel
+            });
           }
         });
       });
@@ -627,26 +748,53 @@
         return;
       }
 
-      // Xếp theo số buổi (Buổi 1, Buổi 2...)
-      allUpcoming.sort((a, b) => a.buoiNum - b.buoiNum);
+      // Sắp xếp chuẩn xác theo thời gian thực:
+      // 1. Các buổi có ngày từ hôm nay trở đi được xếp từ gần nhất -> xa nhất
+      // 2. Các buổi quá hạn (nhưng chưa tick) xếp ngay liền kề theo thứ tự ngày
+      // 3. Các buổi chưa ghi ngày xếp cuối cùng
+      allUpcoming.sort((a, b) => {
+        const aHasDate = a.sortTs < 9999999999999;
+        const bHasDate = b.sortTs < 9999999999999;
+        if (aHasDate && !bHasDate) return -1;
+        if (!aHasDate && bHasDate) return 1;
+        if (!aHasDate && !bHasDate) return (a.l.rowIndex || 0) - (b.l.rowIndex || 0);
 
-      // Lấy 4 ca gần nhất
+        const aIsFuture = a.sortTs >= startOfTodayMs;
+        const bIsFuture = b.sortTs >= startOfTodayMs;
+        if (aIsFuture && !bIsFuture) return -1;
+        if (!aIsFuture && bIsFuture) return 1;
+
+        return a.sortTs - b.sortTs;
+      });
+
+      // CHỈ LẤY ĐÚNG 4 BUỔI GẦN NHẤT CỦA TẤT CẢ HỌC VIÊN
       const top4Nearest = allUpcoming.slice(0, 4);
 
-      container.innerHTML = top4Nearest.map(item => {
-        const { stu, l } = item;
+      container.innerHTML = top4Nearest.map((item, idx) => {
+        const { stu, l, sortTs, shortDate, timeLabel } = item;
         const remindMins = l.prepReminderMins || 45;
+        let timeDetail = '';
+
+        if (sortTs < 9999999999999) {
+          const prepDate = new Date(sortTs - remindMins * 60000);
+          const pad = n => String(n).padStart(2, '0');
+          const prepHHMM = `${pad(prepDate.getHours())}:${pad(prepDate.getMinutes())}`;
+          timeDetail = `Soạn ${prepHHMM} (trước ${remindMins}p) • Dạy ${timeLabel} ngày ${shortDate}`;
+        } else {
+          timeDetail = `Nhắc trước ${remindMins}p • Ca ${timeLabel} (Chưa ghi ngày)`;
+        }
+
         const dot = l.prepStatus === 'READY' ? '🟢' : (l.prepStatus === 'PREPARING' ? '🟡' : '🔴');
 
         return `
           <div onclick="selectStudent('${stu.id}'); openSplitPanel(${l.rowIndex}); toggleMobileSidebar(false);" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 cursor-pointer transition">
             <div class="flex justify-between items-center text-[11px] font-bold text-white gap-1">
-              <span class="truncate">${dot} ${escapeHtml(stu.name)}</span>
+              <span class="truncate">#${idx + 1} ${dot} ${escapeHtml(stu.name)}</span>
               <span class="text-amber-400 shrink-0">${escapeHtml(l.buoi.replace(/\n/g, ' '))}</span>
             </div>
-            <div class="text-[11px] text-slate-300 truncate mt-0.5">${escapeHtml((l.noiDung || '').split('\n')[0])}</div>
+            <div class="text-[11px] text-slate-300 truncate mt-0.5">${escapeHtml((l.noiDung || '').split('\n')[0] || 'Chưa có nội dung')}</div>
             <div class="text-[10px] text-emerald-400 font-mono mt-1 flex items-center gap-1">
-              <i class="fa-regular fa-bell"></i> Nhắc trước ${remindMins} phút
+              <i class="fa-regular fa-clock"></i> ${timeDetail}
             </div>
           </div>`;
       }).join('');
@@ -848,7 +996,7 @@
 
       document.addEventListener('mousemove', (e) => {
         if (isResizingLeft) {
-          const newW = Math.min(Math.max(e.clientX, 220), 600);
+          const newW = Math.min(Math.max(e.clientX, 230), 600);
           leftSidebar.style.width = newW + 'px';
         }
         if (isResizingRight) {
@@ -912,7 +1060,7 @@
       }
     }
 
-    // ==================== ĐỒNG BỘ GOOGLE SHEETS ====================
+    // ==================== ĐỒNG BỘ GOOGLE SHEETS (1 LỚP & TẤT CẢ CÁC LỚP) ====================
     function parseGoogleSheetUrl(url) {
       if (!url) return null;
       const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -923,7 +1071,7 @@
 
     function fetchSheetDataDirectGviz(spreadsheetId, gid) {
       return new Promise((resolve, reject) => {
-        const cbName = 'gvizCallback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        const cbName = 'gvizCallback_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
         const script = document.createElement('script');
         const timeout = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, 12000);
 
@@ -987,13 +1135,11 @@
       });
     }
 
-    async function syncFromGoogleSheet(showAlertOnSuccess = false) {
-      const stu = getActiveStudent();
-      if (!stu || !stu.sheetUrl) return;
+    async function syncSingleStudentObject(stu) {
+      if (!stu || !stu.sheetUrl) return false;
       const parsedUrl = parseGoogleSheetUrl(stu.sheetUrl);
-      if (!parsedUrl) return;
+      if (!parsedUrl) return false;
 
-      setSyncBadge('SYNCING');
       const oldMetaMap = {};
       (stu.lessons || []).forEach(l => {
         oldMetaMap[l.rowIndex] = {
@@ -1018,9 +1164,7 @@
         try {
           fetchedRows = await fetchSheetDataDirectGviz(parsedUrl.spreadsheetId, parsedUrl.gid);
         } catch (e) {
-          setSyncBadge('ERROR');
-          alert('⚠️ Không thể đọc file Sheet. Hãy bật chế độ chia sẻ "Bất kỳ ai có liên kết đều có thể xem" cho file Google Sheet!');
-          return;
+          return false;
         }
       }
 
@@ -1043,11 +1187,38 @@
             script: oldMeta.script || ''
           };
         });
+        return true;
+      }
+      return false;
+    }
+
+    async function syncFromGoogleSheet(showAlertOnSuccess = false) {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      setSyncBadge('SYNCING');
+      const ok = await syncSingleStudentObject(stu);
+      if (ok) {
         saveToLocal();
         renderAll();
         setSyncBadge('SAVED');
-        if (showAlertOnSuccess) alert(`✅ Đã đồng bộ thành công ${stu.lessons.length} buổi từ Sheet về Web!`);
+        if (showAlertOnSuccess) alert(`✅ Đã đồng bộ thành công ${stu.lessons.length} buổi của ${stu.name}!`);
+      } else {
+        setSyncBadge('ERROR');
+        if (showAlertOnSuccess) alert('⚠️ Không thể đọc file Sheet. Hãy kiểm tra quyền chia sẻ file Google Sheet!');
       }
+    }
+
+    // Đồng bộ toàn bộ các Sheet của tất cả học viên cùng lúc
+    async function syncAllStudentsSheets(showAlert = false) {
+      if (state.students.length === 0) return;
+      setSyncBadge('SYNCING');
+      for (const stu of state.students) {
+        await syncSingleStudentObject(stu);
+      }
+      saveToLocal();
+      renderAll();
+      setSyncBadge('SAVED');
+      if (showAlert) alert(`✅ Đã cập nhật lịch học từ toàn bộ ${state.students.length} học viên!`);
     }
 
     async function pushAllWebToGoogleSheet() {
@@ -1236,6 +1407,8 @@
       document.getElementById('splitViewPanel').classList.remove('hidden');
       document.getElementById('rightGutter').classList.remove('hidden');
       document.getElementById('rightGutter').classList.add('md:flex');
+      document.getElementById('panelQuickDocsLink').href = stu.docsUrl || '#';
+      document.getElementById('panelQuickHwDocsLink').href = stu.hwDocsUrl || '#';
       
       document.getElementById('panelLessonBadge').innerText = `Dòng ${lesson.rowIndex} • ${lesson.buoi.replace(/\n/g, ' ')}`;
       document.getElementById('panelPrepStatus').value = lesson.prepStatus || 'UNPREPARED';
